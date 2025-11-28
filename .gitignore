@@ -5,9 +5,12 @@ venv/
 
 # Build outputs
 dist/
-build/
 out/
 *.egg-info/
+
+# Build folder (except icon.svg)
+build/*
+!build/icon.svg
 
 # Electron
 release/
