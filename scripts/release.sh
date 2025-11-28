@@ -44,9 +44,13 @@ else
   
   VERSION=$(node -p "require('./package.json').version")
   
-  # Commit version bump
-  git add package.json
-  git commit -m "Release v$VERSION"
+  # Generate changelog
+  echo "📝 Generating changelog..."
+  npm run changelog --silent
+  
+  # Commit version bump and changelog
+  git add package.json CHANGELOG.md
+  git commit -m "chore: release v$VERSION"
   git push origin main
 fi
 

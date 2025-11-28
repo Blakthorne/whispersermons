@@ -47,6 +47,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download macOS artifacts
         uses: actions/download-artifact@v4
@@ -58,13 +60,29 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Extract changelog for version
+        id: changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            # Extract the section for this version
+            CHANGELOG=$(awk '/^## \['"${{ steps.version.outputs.VERSION }}"'\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md)
+            if [ -z "$CHANGELOG" ]; then
+              CHANGELOG="See [CHANGELOG.md](https://github.com/pedrovsiqueira/whisperdesk/blob/main/CHANGELOG.md) for details."
+            fi
+          else
+            CHANGELOG="Release v${{ steps.version.outputs.VERSION }}"
+          fi
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           name: WhisperDesk v${{ steps.version.outputs.VERSION }}
+          body: ${{ steps.changelog.outputs.CHANGELOG }}
           draft: false
           prerelease: false
-          generate_release_notes: true
           files: |
             release/*.dmg
             release/*.zip
