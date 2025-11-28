@@ -1,6 +1,6 @@
 {
   "name": "whisperdesk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Desktop transcription app powered by OpenAI Whisper",
   "main": "electron/main.js",
   "author": {
@@ -12,10 +12,13 @@
     "build": "vite build",
     "electron": "electron .",
     "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "npm run icons && vite build && electron-builder",
-    "electron:build:mac": "npm run icons && vite build && electron-builder --mac",
+    "electron:build": "npm run bump:patch && npm run icons && vite build && electron-builder",
+    "electron:build:mac": "npm run bump:patch && npm run icons && vite build && electron-builder --mac",
     "electron:build:dir": "npm run icons && vite build && electron-builder --dir",
     "icons": "node scripts/generate-icons.js",
+    "bump:patch": "node scripts/bump-version.js patch",
+    "bump:minor": "node scripts/bump-version.js minor",
+    "bump:major": "node scripts/bump-version.js major",
     "preview": "vite preview"
   },
   "keywords": [
