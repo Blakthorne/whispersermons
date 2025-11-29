@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import './FileDropZone.css'
 
-function FileDropZone({ onFileSelect, selectedFile, disabled }) {
+function FileDropZone({ onFileSelect, selectedFile, disabled, onClear }) {
   const handleClick = async () => {
     if (disabled) return
     
@@ -50,6 +50,17 @@ function FileDropZone({ onFileSelect, selectedFile, disabled }) {
     >
       {selectedFile ? (
         <div className="file-info">
+          <button
+            className="file-remove"
+            onClick={(e) => {
+              e.stopPropagation()
+              onClear?.()
+            }}
+            title="Remove file"
+            aria-label="Remove selected file"
+          >
+            ✕
+          </button>
           <span className="file-icon">📁</span>
           <div className="file-details">
             <span className="file-name">{selectedFile.name}</span>
@@ -64,6 +75,7 @@ function FileDropZone({ onFileSelect, selectedFile, disabled }) {
           <span className="dropzone-icon">📂</span>
           <span className="dropzone-text">Drop audio/video file here</span>
           <span className="dropzone-subtext">or click to browse</span>
+          <span className="dropzone-formats">MP3, WAV, M4A, FLAC, OGG, MP4, MOV, AVI, MKV, WEBM</span>
         </div>
       )}
     </div>

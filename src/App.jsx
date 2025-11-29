@@ -294,6 +294,7 @@ function App() {
             onFileSelect={handleFileSelect}
             selectedFile={selectedFile}
             disabled={isTranscribing}
+            onClear={() => setSelectedFile(null)}
           />
           
           <SettingsPanel
