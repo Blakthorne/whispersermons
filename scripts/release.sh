@@ -44,12 +44,15 @@ else
   
   VERSION=$(node -p "require('./package.json').version")
   
+  # Update package-lock.json
+  npm install --package-lock-only --silent
+  
   # Generate changelog
   echo "📝 Generating changelog..."
   npm run changelog --silent
   
   # Commit version bump and changelog
-  git add package.json CHANGELOG.md
+  git add package.json package-lock.json CHANGELOG.md
   git commit -m "chore: release v$VERSION"
   git push origin main
 fi
