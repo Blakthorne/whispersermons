@@ -497,9 +497,15 @@ ipcMain.handle('models:download', async (event, modelName) => {
   })
 })
 
+// Track if user cancelled the transcription
+let transcriptionCancelled = false
+
 // Start transcription
 ipcMain.handle('transcribe:start', async (event, options) => {
   const { filePath, model, language, outputFormat } = options
+  
+  // Reset cancellation flag
+  transcriptionCancelled = false
   
   // Validate file exists
   if (!fs.existsSync(filePath)) {
@@ -587,9 +593,10 @@ ipcMain.handle('transcribe:start', async (event, options) => {
         } else {
           resolve({ success: true, text: stdout.trim() })
         }
-      } else if (code === 130) {
-        // User cancelled (SIGINT)
-        reject(new Error('Transcription cancelled'))
+      } else if (transcriptionCancelled || code === 130 || code === 143) {
+        // User cancelled - resolve gracefully instead of rejecting
+        // code 130 = SIGINT (128 + 2), code 143 = SIGTERM (128 + 15)
+        resolve({ success: false, cancelled: true })
       } else {
         // Extract error message from last progress or stderr
         let errorMsg = 'Transcription failed'
@@ -647,6 +654,7 @@ ipcMain.handle('transcribe:start', async (event, options) => {
 ipcMain.handle('transcribe:cancel', async () => {
   if (pythonProcess) {
     console.log('Cancelling transcription...')
+    transcriptionCancelled = true
     pythonProcess.kill('SIGTERM')
     // Force kill after 2 seconds if not terminated
     setTimeout(() => {

@@ -156,6 +156,12 @@ function App() {
         outputFormat: 'vtt'
       })
       
+      // Handle cancellation gracefully
+      if (result.cancelled) {
+        setProgress({ percent: 0, status: 'Cancelled' })
+        return
+      }
+      
       setTranscription(result.text)
       setProgress({ percent: 100, status: 'Complete!' })
 
