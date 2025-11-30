@@ -184,8 +184,8 @@ This project uses a **feature branch workflow** with **automated releases**.
 
 Use [Conventional Commits](https://www.conventionalcommits.org/) for automatic versioning:
 
-| Commit Type                                                        | Example                 | Version Bump          |
-| ------------------------------------------------------------------ | ----------------------- | --------------------- |
+| Commit Type | Example                 | Version Bump          |
+| ----------- | ----------------------- | --------------------- |
 | `feat:`                                                            | `feat: add PDF export`  | Minor (1.0.0 → 1.1.0) |
 | `feat!:`                                                           | `feat!: redesign API`   | Major (1.0.0 → 2.0.0) |
 | `fix:`                                                             | `fix: crash on startup` | Patch (1.0.0 → 1.0.1) |
