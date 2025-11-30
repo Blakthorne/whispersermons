@@ -171,7 +171,7 @@ This project uses a **feature branch workflow** with **automated releases**.
    - Automatically determines version bump
    - Updates `package.json` and `CHANGELOG.md`
    - Creates GitHub Release with tag
-   - **Pauses and waits for approval**
+   - *(Release is created automatically; deployment requires manual approval in the next step)*
 
 6. **Deploy Release** (Manual - You control when):
    - Go to **Actions → Deploy Release** in the GitHub Actions tab
