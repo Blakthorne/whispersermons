@@ -186,11 +186,17 @@ Use [Conventional Commits](https://www.conventionalcommits.org/) for automatic v
 
 | Commit Type | Example                 | Version Bump          |
 | ----------- | ----------------------- | --------------------- |
-| `feat:`                                                            | `feat: add PDF export`  | Minor (1.0.0 → 1.1.0) |
-| `feat!:`                                                           | `feat!: redesign API`   | Major (1.0.0 → 2.0.0) |
-| `fix:`                                                             | `fix: crash on startup` | Patch (1.0.0 → 1.0.1) |
-| `perf:`                                                            | `perf: faster loading`  | Patch                 |
-| `refactor:`, `docs:`, `chore:`, `style:`, `test:`, `ci:`, `build:` | -                       | No release            |
+| `feat:`      | `feat: add PDF export`      | Minor (1.0.0 → 1.1.0) |
+| `feat!:`     | `feat!: redesign API`       | Major (1.0.0 → 2.0.0) |
+| `fix:`       | `fix: crash on startup`     | Patch (1.0.0 → 1.0.1) |
+| `perf:`      | `perf: faster loading`      | Patch                 |
+| `refactor:`  | -                          | No release            |
+| `docs:`      | -                          | No release            |
+| `chore:`     | -                          | No release            |
+| `style:`     | -                          | No release            |
+| `test:`      | -                          | No release            |
+| `ci:`        | -                          | No release            |
+| `build:`     | -                          | No release            |
 
 ### Available Scripts
 
