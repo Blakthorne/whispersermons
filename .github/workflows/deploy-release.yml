@@ -80,16 +80,16 @@ jobs:
         with:
           script: |
             const version = process.env.VERSION;
-            github.rest.repos.createDeployment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: `v${version}`,
-              environment: 'production',
-              description: `WhisperDesk v${version} deployed`,
-              auto_merge: false,
-              required_contexts: []
-            }).then(deployment => {
-              github.rest.repos.createDeploymentStatus({
+            try {
+              const deployment = await github.rest.repos.createDeployment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `v${version}`,
+                environment: 'production',
+                description: `WhisperDesk v${version} deployed`,
+                required_contexts: []
+              });
+              await github.rest.repos.createDeploymentStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 deployment_id: deployment.data.id,
@@ -97,7 +97,9 @@ jobs:
                 environment_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/tag/v${version}`,
                 description: 'Build completed and uploaded to GitHub Release'
               });
-            });
+            } catch (error) {
+              console.error('Failed to create deployment:', error);
+            }
 
   # Optional: Build for Windows (uncomment when ready)
   # deploy-windows:
