@@ -1,20 +1,29 @@
-name: Build and Release
+name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
-  build-mac:
-    runs-on: macos-latest
-    
+  # First, run semantic-release to determine version and create GitHub release
+  release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    outputs:
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -25,66 +34,102 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build for macOS
-        run: npm run icons && npm run build && npx electron-builder --mac --publish never
+      - name: Run semantic-release
+        id: semantic
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
 
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
-          path: |
-            release/*.dmg
-            release/*.zip
+  # Build macOS app only if a new version was released
+  build-mac:
+    name: Build macOS
+    needs: release
+    if: needs.release.outputs.new_release_published == 'true'
+    runs-on: macos-latest
 
-  create-release:
-    needs: build-mac
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
+      - name: Pull latest changes (includes version bump)
+        run: git pull origin main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          name: macos-build
-          path: release
+          node-version: '20'
+          cache: 'npm'
 
-      - name: Get version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Extract changelog for version
-        id: changelog
-        run: |
-          if [ -f CHANGELOG.md ]; then
-            # Extract the section for this version
-            CHANGELOG=$(awk '/^## \['"${{ steps.version.outputs.VERSION }}"'\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md)
-            if [ -z "$CHANGELOG" ]; then
-              CHANGELOG="See [CHANGELOG.md](https://github.com/pedrovsiqueira/whisperdesk/blob/main/CHANGELOG.md) for details."
-            fi
-          else
-            CHANGELOG="Release v${{ steps.version.outputs.VERSION }}"
-          fi
-          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+      - name: Generate icons
+        run: npm run icons
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Build application
+        run: npm run build
+
+      - name: Build Electron app for macOS
+        run: npx electron-builder --mac --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release assets to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: WhisperDesk v${{ steps.version.outputs.VERSION }}
-          body: ${{ steps.changelog.outputs.CHANGELOG }}
-          draft: false
-          prerelease: false
+          tag_name: v${{ needs.release.outputs.new_release_version }}
           files: |
             release/*.dmg
             release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional: Build for Windows (uncomment when ready)
+  # build-windows:
+  #   name: Build Windows
+  #   needs: release
+  #   if: needs.release.outputs.new_release_published == 'true'
+  #   runs-on: windows-latest
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #       with:
+  #         ref: main
+  #         fetch-depth: 0
+  #
+  #     - name: Pull latest changes
+  #       run: git pull origin main
+  #
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '20'
+  #         cache: 'npm'
+  #
+  #     - name: Install dependencies
+  #       run: npm ci
+  #
+  #     - name: Build application
+  #       run: npm run build
+  #
+  #     - name: Build Electron app for Windows
+  #       run: npx electron-builder --win --publish never
+  #       env:
+  #         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #
+  #     - name: Upload release assets
+  #       uses: softprops/action-gh-release@v2
+  #       with:
+  #         tag_name: v${{ needs.release.outputs.new_release_version }}
+  #         files: |
+  #           release/*.exe
+  #           release/*.blockmap
+  #           release/latest.yml
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

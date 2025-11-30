@@ -139,43 +139,52 @@ npm run electron:build:mac
 npm run electron:build:dir
 ```
 
-### Releasing a New Version
+### Contributing
 
-The release process is automated. Just run:
+This project uses a **feature branch workflow** with **automated releases**.
 
-```bash
-# Release with patch version bump (1.0.0 -> 1.0.1)
-./scripts/release.sh
+#### Development Flow
 
-# Release with minor version bump (1.0.0 -> 1.1.0)
-./scripts/release.sh minor
+1. **Create a feature branch** from `main`:
 
-# Release with major version bump (1.0.0 -> 2.0.0)
-./scripts/release.sh major
+   ```bash
+   git checkout -b feat/my-feature
+   ```
 
-# Re-release current version (e.g., to fix a failed build)
-./scripts/release.sh --force
-```
+2. **Make changes** with conventional commits:
 
-This will:
+   ```bash
+   git commit -m "feat: add new transcription format"
+   git commit -m "fix: handle empty file gracefully"
+   ```
 
-1. Bump the version in `package.json`
-2. Generate/update `CHANGELOG.md` from git commits
-3. Commit the changes
-4. Create and push a git tag
-5. Trigger GitHub Actions to build and publish the release
+3. **Push and create a Pull Request** to `main`
 
-**Commit Message Convention** (for better changelogs):
+4. **CI runs automatically** on your PR:
+   - ESLint check
+   - TypeScript check
+   - Prettier format check
+   - Build verification
 
-```
-feat: add new feature        # ✨ Features
-fix: fix a bug               # 🐛 Bug Fixes
-docs: update documentation   # 📚 Documentation
-style: styling changes       # 💄 Styling
-refactor: code refactoring   # ♻️ Refactoring
-perf: performance improvement # ⚡ Performance
-chore: maintenance tasks     # 🔨 Chores
-```
+5. **After PR is merged to `main`**:
+   - [semantic-release](https://semantic-release.gitbook.io/) analyzes commits
+   - Automatically determines version bump
+   - Updates `package.json` and `CHANGELOG.md`
+   - Creates GitHub Release with tag
+   - Builds macOS app and attaches DMG to release
+
+#### Commit Message Convention
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) for automatic versioning:
+
+| Commit Type                                 | Example                 | Version Bump          |
+| ------------------------------------------- | ----------------------- | --------------------- |
+| `feat:`                                     | `feat: add PDF export`  | Minor (1.0.0 → 1.1.0) |
+| `feat!:`                                    | `feat!: redesign API`   | Major (1.0.0 → 2.0.0) |
+| `fix:`                                      | `fix: crash on startup` | Patch (1.0.0 → 1.0.1) |
+| `perf:`                                     | `perf: faster loading`  | Patch                 |
+| `refactor:`                                 | `refactor: clean code`  | Patch                 |
+| `docs:`, `chore:`, `style:`, `test:`, `ci:` | -                       | No release            |
 
 ### Available Scripts
 
@@ -184,16 +193,14 @@ chore: maintenance tasks     # 🔨 Chores
 | `npm run dev`                | Start Vite dev server                     |
 | `npm run electron:dev`       | Start app in development mode             |
 | `npm run setup:whisper`      | Build whisper.cpp and download base model |
-| `npm run electron:build:mac` | Build macOS DMG (bumps version)           |
+| `npm run electron:build`     | Build macOS DMG                           |
+| `npm run electron:build:mac` | Build macOS DMG                           |
 | `npm run icons`              | Generate app icons from SVG               |
-| `npm run changelog`          | Generate CHANGELOG.md                     |
-| `npm run bump:patch`         | Bump patch version                        |
-| `npm run bump:minor`         | Bump minor version                        |
-| `npm run bump:major`         | Bump major version                        |
 | `npm run lint`               | Run ESLint                                |
 | `npm run lint:fix`           | Run ESLint with auto-fix                  |
 | `npm run typecheck`          | Run TypeScript type checking              |
 | `npm run format`             | Format code with Prettier                 |
+| `npm run format:check`       | Check code formatting                     |
 
 ### Project Structure
 
@@ -218,6 +225,7 @@ whisperdesk/
 │   │   ├── settings/        # Settings feature
 │   │   ├── history/         # History feature
 │   │   └── updates/         # Updates feature
+│   ├── contexts/            # React Context providers
 │   ├── hooks/               # Shared custom hooks
 │   ├── services/            # Shared services (Electron API wrappers)
 │   ├── config/              # App configuration & constants
@@ -225,7 +233,8 @@ whisperdesk/
 │   ├── utils/               # Utility functions
 │   └── styles/              # Global styles
 ├── scripts/                 # Build and setup scripts
-│   └── setup-whisper-cpp.sh # Builds whisper.cpp
+│   ├── setup-whisper-cpp.sh # Builds whisper.cpp
+│   └── generate-icons.js    # Generates app icons
 ├── bin/                     # whisper-cli binary (built)
 ├── models/                  # Downloaded GGML models
 └── build/                   # Build resources (icons, etc.)
