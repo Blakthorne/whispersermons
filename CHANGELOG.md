@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/pedrovsiqueira/whisperdesk/compare/v1.0.0...v1.0.1) (2025-12-01)
+
+### 🐛 Bug Fixes
+
+- update latest release tag retrieval to exclude pre-releases ([c4693a9](https://github.com/pedrovsiqueira/whisperdesk/commit/c4693a958bf91183813422d64094a851c4c78f69))
+
 ## 1.0.0 (2025-12-01)
 
 ### ✨ Features
