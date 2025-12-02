@@ -362,6 +362,12 @@ Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) 
 - Code style and commit conventions
 - Submitting pull requests
 
+## 🔒 Security
+
+- All audio/video processing happens **locally** on your device
+- No data is sent to external servers
+- The app is **code-signed and notarized** by Apple
+
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
