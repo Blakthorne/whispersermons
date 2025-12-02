@@ -1,3 +1,9 @@
+## [1.1.6](https://github.com/pedrovsiqueira/whisperdesk/compare/v1.1.5...v1.1.6) (2025-12-02)
+
+### 🐛 Bug Fixes
+
+- set timeout for macOS Electron build step to 60 minutes ([e2cbac5](https://github.com/pedrovsiqueira/whisperdesk/commit/e2cbac5cc2d103f4b7ebe416e8ea216f4fbda934))
+
 ## [1.1.5](https://github.com/pedrovsiqueira/whisperdesk/compare/v1.1.4...v1.1.5) (2025-12-02)
 
 ### 🐛 Bug Fixes
