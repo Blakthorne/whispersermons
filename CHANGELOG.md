@@ -1,3 +1,9 @@
+## [1.1.2](https://github.com/pedrovsiqueira/whisperdesk/compare/v1.1.1...v1.1.2) (2025-12-02)
+
+### 🐛 Bug Fixes
+
+- update .gitignore to include entitlements.mac.plist and add entitlements file for code signing ([778e4f2](https://github.com/pedrovsiqueira/whisperdesk/commit/778e4f2dada7ab9459e6f05e97d7aeb56493c2f3))
+
 ## [1.1.1](https://github.com/pedrovsiqueira/whisperdesk/compare/v1.1.0...v1.1.1) (2025-12-02)
 
 ### 🐛 Bug Fixes
