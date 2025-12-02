@@ -6,9 +6,10 @@ dist/
 dist-electron/
 out/
 
-# Build folder (except icon.svg)
+# Build folder (except icon.svg and entitlements)
 build/*
 !build/icon.svg
+!build/entitlements.mac.plist
 
 # Electron
 release/
