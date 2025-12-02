@@ -1,3 +1,9 @@
+## [1.1.3](https://github.com/pedrovsiqueira/whisperdesk/compare/v1.1.2...v1.1.3) (2025-12-02)
+
+### 🐛 Bug Fixes
+
+- format entitlements.mac.plist for consistency ([d3512f2](https://github.com/pedrovsiqueira/whisperdesk/commit/d3512f2b77911f88d1c8de9e118452ee09afbdba))
+
 ## [1.1.2](https://github.com/pedrovsiqueira/whisperdesk/compare/v1.1.1...v1.1.2) (2025-12-02)
 
 ### 🐛 Bug Fixes
