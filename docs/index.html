@@ -70,12 +70,7 @@
             "No Internet Required",
             "No Subscription Fees",
             "Open Source (MIT License)"
-        ],
-        "aggregateRating": {
-            "@type": "AggregateRating",
-            "ratingValue": "5",
-            "ratingCount": "1"
-        }
+        ]
     }
     </script>
     <script type="application/ld+json">
@@ -206,7 +201,7 @@
                 </div>
 
                 <h1 id="hero-title" class="hero-title">
-                    Transcribe Audio <br class="hidden-mobile" aria-hidden="true" />
+                    Transcribe Audio <br class="hidden-mobile" />
                     <span class="gradient-text">Private, Fast, & Local.</span>
                 </h1>
 
@@ -249,8 +244,8 @@
                         privacy.</p>
                 </header>
 
-                <div class="features-grid" role="list">
-                    <article class="feature-card" role="listitem">
+                <div class="features-grid">
+                    <article class="feature-card">
                         <div class="feature-icon indigo" aria-hidden="true">
                             <i data-lucide="shield-check" style="width: 24px; height: 24px;"></i>
                         </div>
@@ -260,7 +255,7 @@
                             using your CPU or GPU. Perfect for confidential meetings, interviews, and sensitive content.
                         </p>
                     </article>
-                    <article class="feature-card" role="listitem">
+                    <article class="feature-card">
                         <div class="feature-icon purple" aria-hidden="true">
                             <i data-lucide="zap" style="width: 24px; height: 24px;"></i>
                         </div>
@@ -270,7 +265,7 @@
                             blazing fast transcription speeds up to <strong>100x real-time</strong>.
                         </p>
                     </article>
-                    <article class="feature-card" role="listitem">
+                    <article class="feature-card">
                         <div class="feature-icon blue" aria-hidden="true">
                             <i data-lucide="file-text" style="width: 24px; height: 24px;"></i>
                         </div>
@@ -373,6 +368,7 @@
         mobileToggle.addEventListener('click', () => {
             navLinks.classList.toggle('nav-links-open');
             const isOpen = navLinks.classList.contains('nav-links-open');
+            mobileToggle.setAttribute('aria-expanded', isOpen);
             mobileToggle.innerHTML = isOpen
                 ? '<i data-lucide="x" style="width: 24px; height: 24px;"></i>'
                 : '<i data-lucide="menu" style="width: 24px; height: 24px;"></i>';

@@ -699,6 +699,7 @@ img {
 }
 
 .terminal-line {
+  display: block;
   font-family: var(--font-mono);
   font-size: 0.875rem;
   color: #5c5f66;
