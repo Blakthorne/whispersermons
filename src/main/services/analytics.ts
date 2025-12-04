@@ -12,6 +12,11 @@ export function initAnalytics() {
     return;
   }
 
+  if (!APTABASE_APP_KEY) {
+    console.warn('Analytics disabled: APTABASE_APP_KEY not configured');
+    return;
+  }
+
   try {
     initialize(APTABASE_APP_KEY);
     initialized = true;

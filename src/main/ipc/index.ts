@@ -105,7 +105,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
     }
   });
 
-  ipcMain.handle('models:delete', async (_event, modelName: string) => {
+  ipcMain.handle('models:delete', (_event, modelName: string) => {
     const result = deleteModel(modelName);
     if (result.success) {
       trackEvent(AnalyticsEvents.MODEL_DELETED, { model: modelName });
@@ -116,17 +116,18 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
   let currentTranscription: { cancel?: () => void } | null = null;
 
   ipcMain.handle('transcribe:start', async (_event, options: TranscriptionOptions) => {
-    trackEvent(AnalyticsEvents.TRANSCRIPTION_STARTED, {
-      model: options.model,
-      language: options.language,
-    });
-
     try {
       const promise = transcribe(options, (progress) => {
         getMainWindow()?.webContents.send('transcribe:progress', progress);
       });
 
       currentTranscription = promise;
+
+      trackEvent(AnalyticsEvents.TRANSCRIPTION_STARTED, {
+        model: options.model,
+        language: options.language,
+      });
+
       const result = await promise;
       currentTranscription = null;
 
@@ -135,6 +136,8 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
           model: options.model,
           language: options.language,
         });
+      } else if (result.cancelled) {
+        trackEvent(AnalyticsEvents.TRANSCRIPTION_CANCELLED);
       }
 
       return result;
@@ -143,7 +146,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const sanitizedError = errorMessage
         .replace(/\/[^\s]+/g, '[path]')
-        .replace(/[A-Za-z]:\\[^\s]+/g, '[path]')
+        .replace(/[A-Za-z]:[\\/][^\s]+/g, '[path]')
         .substring(0, 100);
       trackEvent(AnalyticsEvents.TRANSCRIPTION_FAILED, {
         model: options.model,
@@ -157,7 +160,6 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
     if (currentTranscription && currentTranscription.cancel) {
       currentTranscription.cancel();
       currentTranscription = null;
-      trackEvent(AnalyticsEvents.TRANSCRIPTION_CANCELLED);
       return { success: true };
     }
     return { success: false, message: 'No active transcription' };
