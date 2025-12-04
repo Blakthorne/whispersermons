@@ -1,14 +1,16 @@
 # 🎙️ WhisperDesk
 
-[![CI](https://github.com/pedrovsiqueira/whisperdesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pedrovsiqueira/whisperdesk/actions/workflows/ci.yml)
-[![Release Version](https://img.shields.io/github/v/release/pedrovsiqueira/whisperdesk?label=release&logo=github)](https://github.com/pedrovsiqueira/whisperdesk/releases)
-[![Lint](https://img.shields.io/badge/lint-passing-brightgreen.svg?logo=eslint&logoColor=white)](https://github.com/pedrovsiqueira/whisperdesk/actions/workflows/ci.yml)
-[![Stars](https://img.shields.io/github/stars/pedrovsiqueira/whisperdesk?style=social)](https://github.com/pedrovsiqueira/whisperdesk/stargazers)
-[![Forks](https://img.shields.io/github/forks/pedrovsiqueira/whisperdesk?style=social)](https://github.com/pedrovsiqueira/whisperdesk/network/members)
-[![Good First Issue](https://img.shields.io/github/issues-raw/pedrovsiqueira/whisperdesk/good%20first%20issue)](https://github.com/pedrovsiqueira/whisperdesk/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
-[![Contributions Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg?logo=github)](https://github.com/pedrovsiqueira/whisperdesk/blob/main/CONTRIBUTING.md)
+[![CI](https://github.com/PVAS-Development/whisperdesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/PVAS-Development/whisperdesk/actions/workflows/ci.yml)
+[![Release Version](https://img.shields.io/github/v/release/PVAS-Development/whisperdesk?label=release&logo=github)](https://github.com/PVAS-Development/whisperdesk/releases)
+[![Lint](https://img.shields.io/badge/lint-passing-brightgreen.svg?logo=eslint&logoColor=white)](https://github.com/PVAS-Development/whisperdesk/actions/workflows/ci.yml)
+[![Stars](https://img.shields.io/github/stars/PVAS-Development/whisperdesk?style=social)](https://github.com/PVAS-Development/whisperdesk/stargazers)
+[![Forks](https://img.shields.io/github/forks/PVAS-Development/whisperdesk?style=social)](https://github.com/PVAS-Development/whisperdesk/network/members)
+[![Good First Issue](https://img.shields.io/github/issues-raw/PVAS-Development/whisperdesk/good%20first%20issue)](https://github.com/PVAS-Development/whisperdesk/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+[![Contributions Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg?logo=github)](https://github.com/PVAS-Development/whisperdesk/blob/main/CONTRIBUTING.md)
 
 A beautiful, native macOS desktop application for transcribing audio and video files using [whisper.cpp](https://github.com/ggml-org/whisper.cpp).
+
+🌐 **[Visit our website](https://pvas-development.github.io/whisperdesk/)** | 📥 **[Download Latest Release](https://github.com/PVAS-Development/whisperdesk/releases/latest)**
 
 ![WhisperDesk Screenshot](src/docs/screenshot.png)
 
@@ -21,6 +23,7 @@ A beautiful, native macOS desktop application for transcribing audio and video f
 - **Language Support** - Auto-detect or select from 12+ languages
 - **Apple Silicon Optimized** - Native Metal GPU acceleration on M1/M2/M3/M4 Macs
 - **Dark Mode** - Beautiful dark theme that respects your system preference
+- **Auto Updates** - Automatic update notifications when new versions are available
 - **Keyboard Shortcuts** - Full keyboard navigation support
 - **Transcription History** - Keep track of your recent transcriptions
 - **Native Performance** - Uses whisper.cpp for fast, efficient transcription
@@ -59,7 +62,7 @@ brew install cmake
 
 #### Option A: Download DMG (Recommended)
 
-1. Download the latest `WhisperDesk-x.x.x.dmg` from [Releases](https://github.com/pedrovsiqueira/whisperdesk/releases)
+1. Download the latest `WhisperDesk-x.x.x.dmg` from [Releases](https://github.com/PVAS-Development/whisperdesk/releases)
 2. Open the DMG file
 3. Drag WhisperDesk to your Applications folder
 4. Launch WhisperDesk from Applications
@@ -68,7 +71,7 @@ brew install cmake
 
 ```bash
 # Clone the repository
-git clone https://github.com/pedrovsiqueira/whisperdesk.git
+git clone https://github.com/PVAS-Development/whisperdesk.git
 cd whisperdesk
 
 # Install dependencies
@@ -136,7 +139,7 @@ Models are downloaded automatically on first use and cached in:
 
 ```bash
 # Clone and install
-git clone https://github.com/pedrovsiqueira/whisperdesk.git
+git clone https://github.com/PVAS-Development/whisperdesk.git
 cd whisperdesk
 npm install
 
@@ -190,8 +193,8 @@ Use [Conventional Commits](https://www.conventionalcommits.org/) for clear histo
 
 #### Issues & Discussions
 
-- **Bug report?** Open an issue via the built-in [bug report template](https://github.com/pedrovsiqueira/whisperdesk/issues/new/choose) so we collect macOS version, WhisperDesk version, reproduction steps, and relevant logs automatically.
-- **Feature idea?** Start a thread in [Discussions](https://github.com/pedrovsiqueira/whisperdesk/discussions). We prefer to explore new ideas there and will only create an issue once we understand the scope.
+- **Bug report?** Open an issue via the built-in [bug report template](https://github.com/PVAS-Development/whisperdesk/issues/new/choose) so we collect macOS version, WhisperDesk version, reproduction steps, and relevant logs automatically.
+- **Feature idea?** Start a thread in [Discussions](https://github.com/PVAS-Development/whisperdesk/discussions). We prefer to explore new ideas there and will only create an issue once we understand the scope.
 - **Before you post**: search the existing issues and discussions to avoid duplicates and help us respond faster.
 
 ### Testing
