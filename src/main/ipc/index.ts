@@ -14,6 +14,7 @@ import {
   generatePdfDocument,
   generateMarkdownDocument,
 } from '../utils/export-helper';
+import { trackEvent, AnalyticsEvents } from '../services/analytics';
 import type { TranscriptionOptions, SaveFileOptions } from '../../shared/types';
 
 export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
@@ -63,6 +64,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
       }
 
       fs.writeFileSync(filePath, data);
+      trackEvent(AnalyticsEvents.EXPORT_SAVED, { format });
       return { success: true, filePath };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -91,21 +93,34 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
 
   ipcMain.handle('models:download', async (_event, modelName: string) => {
     try {
-      return await downloadModel(modelName, (progress) => {
+      const result = await downloadModel(modelName, (progress) => {
         getMainWindow()?.webContents.send('models:downloadProgress', progress);
       });
+      if (result.success) {
+        trackEvent(AnalyticsEvents.MODEL_DOWNLOADED, { model: modelName });
+      }
+      return result;
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
   ipcMain.handle('models:delete', async (_event, modelName: string) => {
-    return deleteModel(modelName);
+    const result = deleteModel(modelName);
+    if (result.success) {
+      trackEvent(AnalyticsEvents.MODEL_DELETED, { model: modelName });
+    }
+    return result;
   });
 
   let currentTranscription: { cancel?: () => void } | null = null;
 
   ipcMain.handle('transcribe:start', async (_event, options: TranscriptionOptions) => {
+    trackEvent(AnalyticsEvents.TRANSCRIPTION_STARTED, {
+      model: options.model,
+      language: options.language,
+    });
+
     try {
       const promise = transcribe(options, (progress) => {
         getMainWindow()?.webContents.send('transcribe:progress', progress);
@@ -115,10 +130,26 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
       const result = await promise;
       currentTranscription = null;
 
+      if (result.success && !result.cancelled) {
+        trackEvent(AnalyticsEvents.TRANSCRIPTION_COMPLETED, {
+          model: options.model,
+          language: options.language,
+        });
+      }
+
       return result;
     } catch (error) {
       currentTranscription = null;
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const sanitizedError = errorMessage
+        .replace(/\/[^\s]+/g, '[path]')
+        .replace(/[A-Za-z]:\\[^\s]+/g, '[path]')
+        .substring(0, 100);
+      trackEvent(AnalyticsEvents.TRANSCRIPTION_FAILED, {
+        model: options.model,
+        error: sanitizedError,
+      });
+      return { success: false, error: errorMessage };
     }
   });
 
@@ -126,6 +157,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
     if (currentTranscription && currentTranscription.cancel) {
       currentTranscription.cancel();
       currentTranscription = null;
+      trackEvent(AnalyticsEvents.TRANSCRIPTION_CANCELLED);
       return { success: true };
     }
     return { success: false, message: 'No active transcription' };

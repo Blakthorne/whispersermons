@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, shell, dialog } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import path from 'path';
 import { registerIpcHandlers } from './ipc';
+import { initAnalytics, trackEvent, AnalyticsEvents } from './services/analytics';
 import packageJson from '../../package.json';
 
 let mainWindow: BrowserWindow | null = null;
@@ -205,7 +206,14 @@ const createWindow = () => {
   }
 };
 
-app.on('ready', createWindow);
+app.on('ready', () => {
+  initAnalytics();
+  createWindow();
+});
+
+app.on('before-quit', () => {
+  trackEvent(AnalyticsEvents.APP_CLOSED);
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
