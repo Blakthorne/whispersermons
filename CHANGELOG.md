@@ -1,3 +1,10 @@
+## [1.3.0](https://github.com/PVAS-Development/whisperdesk/compare/v1.2.1...v1.3.0) (2025-12-04)
+
+### ✨ Features
+
+- enhance analytics tracking and add warning for missing APTABASE_APP_KEY ([430f05f](https://github.com/PVAS-Development/whisperdesk/commit/430f05fc9c1277a4e5622a7b9b95df106b73cc38))
+- integrate Aptabase and google analytics for event tracking ([cc9a090](https://github.com/PVAS-Development/whisperdesk/commit/cc9a0901d07ceef400d151663c49138028c1ef04))
+
 ## [1.2.1](https://github.com/PVAS-Development/whisperdesk/compare/v1.2.0...v1.2.1) (2025-12-04)
 
 ### 🐛 Bug Fixes
