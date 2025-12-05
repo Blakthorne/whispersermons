@@ -1,3 +1,9 @@
+## [1.4.2](https://github.com/PVAS-Development/whisperdesk/compare/v1.4.1...v1.4.2) (2025-12-05)
+
+### 🐛 Bug Fixes
+
+- initialize analytics only once during app startup ([1b46600](https://github.com/PVAS-Development/whisperdesk/commit/1b46600ab620b27d4c37a30033a68e48e36ed5be))
+
 ## [1.4.1](https://github.com/PVAS-Development/whisperdesk/compare/v1.4.0...v1.4.1) (2025-12-05)
 
 ### 🐛 Bug Fixes
