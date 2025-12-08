@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Copy, Check, AlertTriangle, RefreshCw } from 'lucide-react';
 import './SystemWarning.css';
 import { useCopyToClipboard } from '../../../hooks/useCopyToClipboard';
+import { trackEvent } from '../../../services/electronAPI';
 
 export interface SystemWarningProps {
-  onRefresh: () => void;
+  onRefresh: () => Promise<void>;
 }
 
 function SystemWarning({ onRefresh }: SystemWarningProps): React.JSX.Element {
@@ -34,12 +35,21 @@ function SystemWarning({ onRefresh }: SystemWarningProps): React.JSX.Element {
 
   const handleCopy = () => {
     copyToClipboard(installCommand);
+    trackEvent('ffmpeg_install_command_copied', { command: installCommand }).catch((error) => {
+      console.error('Failed to track copy event:', error);
+    });
   };
 
   const handleRefresh = async () => {
     setIsChecking(true);
-    await onRefresh();
-    setTimeout(() => setIsChecking(false), 500);
+    trackEvent('ffmpeg_check_again_clicked').catch((error) => {
+      console.error('Failed to track refresh event:', error);
+    });
+    try {
+      await onRefresh();
+    } finally {
+      setIsChecking(false);
+    }
   };
 
   return (

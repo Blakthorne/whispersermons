@@ -186,4 +186,11 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
       isTranscribing: !!currentTranscription,
     };
   });
+
+  ipcMain.handle(
+    'analytics:track',
+    (_event, eventName: string, properties?: Record<string, string | number | boolean>) => {
+      trackEvent(eventName, properties);
+    }
+  );
 }

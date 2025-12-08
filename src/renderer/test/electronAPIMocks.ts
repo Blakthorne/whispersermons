@@ -30,6 +30,7 @@ export const createDefaultElectronAPIMock = (): ElectronAPI => ({
     heapUsed: 100 * 1024 * 1024,
     heapTotal: 200 * 1024 * 1024,
   }),
+  trackEvent: vi.fn().mockResolvedValue(undefined),
   onMenuOpenFile: vi.fn().mockReturnValue(() => {}),
   onMenuSaveFile: vi.fn().mockReturnValue(() => {}),
   onMenuCopyTranscription: vi.fn().mockReturnValue(() => {}),
@@ -55,6 +56,7 @@ export const createFullElectronAPIMock = (): ElectronAPI => ({
   getMemoryUsage: vi
     .fn()
     .mockResolvedValue({ heapUsed: 1, heapTotal: 2, rss: 3, external: 4, isTranscribing: false }),
+  trackEvent: vi.fn().mockResolvedValue(undefined),
   onMenuOpenFile: vi.fn().mockReturnValue(() => {}),
   onMenuSaveFile: vi.fn().mockReturnValue(() => {}),
   onMenuCopyTranscription: vi.fn().mockReturnValue(() => {}),

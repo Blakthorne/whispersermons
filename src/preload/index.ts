@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
   getMemoryUsage: () => ipcRenderer.invoke('app:getMemoryUsage'),
+  trackEvent: (eventName: string, properties?: Record<string, string | number | boolean>) =>
+    ipcRenderer.invoke('analytics:track', eventName, properties),
 
   onMenuOpenFile: (callback: () => void) => {
     ipcRenderer.on('menu:openFile', () => callback());

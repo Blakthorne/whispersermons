@@ -93,3 +93,10 @@ export async function getMemoryUsage(): Promise<MemoryUsage> {
   const result = await window.electronAPI?.getMemoryUsage();
   return result ?? { heapUsed: 0, heapTotal: 0, rss: 0, external: 0, isTranscribing: false };
 }
+
+export async function trackEvent(
+  eventName: string,
+  properties?: Record<string, string | number | boolean>
+): Promise<void> {
+  await window.electronAPI?.trackEvent(eventName, properties);
+}

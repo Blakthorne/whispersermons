@@ -54,6 +54,7 @@
   color: var(--text-primary);
   background-color: var(--surface-hover);
 }
+
 .refresh-button {
   margin-top: 12px;
   background: transparent;
