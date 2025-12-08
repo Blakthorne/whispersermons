@@ -33,11 +33,15 @@
   --danger-light: rgba(239, 68, 68, 0.08);
   --warning: #f59e0b;
   --warning-light: rgba(245, 158, 11, 0.1);
+  --warning-dark: #b45309;
+  --warning-surface: rgba(255, 255, 255, 0.5);
+  --warning-surface-dim: rgba(255, 255, 255, 0.4);
 
   --color-heart: #ef4444;
   --color-coffee: #ffdd00;
 
   --border: rgba(0, 0, 0, 0.08);
+  --border-subtle: rgba(0, 0, 0, 0.05);
   --border-hover: rgba(0, 0, 0, 0.12);
   --border-accent: rgba(37, 99, 235, 0.3);
 
@@ -87,8 +91,12 @@
   --danger-light: rgba(248, 113, 113, 0.12);
   --warning: #fbbf24;
   --warning-light: rgba(251, 191, 36, 0.12);
+  --warning-dark: #fbbf24;
+  --warning-surface: rgba(255, 255, 255, 0.1);
+  --warning-surface-dim: rgba(255, 255, 255, 0.05);
 
   --border: rgba(255, 255, 255, 0.06);
+  --border-subtle: rgba(255, 255, 255, 0.04);
   --border-hover: rgba(255, 255, 255, 0.1);
   --border-accent: rgba(59, 130, 246, 0.4);
 

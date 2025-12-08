@@ -26,9 +26,11 @@ function LeftPanel(): React.JSX.Element {
     try {
       const available = await checkFFmpeg();
       setIsFFmpegAvailable(available);
+      return available;
     } catch (error) {
       console.error('Failed to check FFmpeg status:', error);
       setIsFFmpegAvailable(false);
+      return false;
     }
   }, []);
 
