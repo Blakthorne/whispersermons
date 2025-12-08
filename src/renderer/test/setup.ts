@@ -10,6 +10,7 @@ const mockElectronAPI: ElectronAPI = {
   getFileInfo: vi.fn().mockResolvedValue(null),
   listModels: vi.fn().mockResolvedValue({ models: [] }),
   deleteModel: vi.fn().mockResolvedValue({ success: true }),
+  checkFFmpeg: vi.fn().mockResolvedValue(true),
   getGpuStatus: vi.fn().mockResolvedValue({ available: false }),
   downloadModel: vi
     .fn()

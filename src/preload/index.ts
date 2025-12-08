@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   listModels: () => ipcRenderer.invoke('models:list'),
   getGpuStatus: () => ipcRenderer.invoke('models:gpuStatus'),
+  checkFFmpeg: () => ipcRenderer.invoke('system:checkFFmpeg'),
   downloadModel: (modelName: string) => ipcRenderer.invoke('models:download', modelName),
   deleteModel: (modelName: string) => ipcRenderer.invoke('models:delete', modelName),
   onModelDownloadProgress: (callback: (data: ModelDownloadProgress) => void) => {

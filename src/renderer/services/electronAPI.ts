@@ -80,6 +80,10 @@ export async function getGpuStatus(): Promise<GpuInfo> {
   return result ?? { available: false, type: 'cpu', name: 'CPU' };
 }
 
+export async function checkFFmpeg(): Promise<boolean> {
+  return (await window.electronAPI?.checkFFmpeg()) ?? false;
+}
+
 export async function getAppInfo(): Promise<AppInfo> {
   const result = await window.electronAPI?.getAppInfo();
   return result ?? { isDev: true, version: '0.0.0', platform: process.platform as NodeJS.Platform };

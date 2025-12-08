@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import type { ChildProcess } from 'child_process';
 import path from 'path';
 import fs from 'fs';
@@ -325,6 +325,29 @@ export function deleteModel(modelName: string): { success: boolean; error?: stri
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+export async function checkFFmpeg(): Promise<boolean> {
+  const ffmpegPaths = [
+    '/opt/homebrew/bin/ffmpeg',
+    '/usr/local/bin/ffmpeg',
+    '/usr/bin/ffmpeg',
+    'ffmpeg',
+  ];
+
+  for (const p of ffmpegPaths) {
+    if (p === 'ffmpeg') {
+      try {
+        const result = spawnSync('ffmpeg', ['-version'], { timeout: 5000 });
+        if (result.status === 0) return true;
+      } catch {
+        continue;
+      }
+    } else if (fs.existsSync(p)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function checkGpuStatus(): GpuInfo {

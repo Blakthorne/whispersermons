@@ -37,6 +37,7 @@ export interface ElectronAPI {
   listModels: () => Promise<ModelsListResponse>;
   deleteModel: (modelName: string) => Promise<{ success: boolean; error?: string }>;
   getGpuStatus: () => Promise<GpuInfo>;
+  checkFFmpeg: () => Promise<boolean>;
   downloadModel: (modelName: string) => Promise<{ success: boolean; model: string; path: string }>;
   onModelDownloadProgress: (callback: (data: ModelDownloadProgress) => void) => Unsubscribe;
   startTranscription: (options: TranscriptionOptions) => Promise<TranscriptionResult>;

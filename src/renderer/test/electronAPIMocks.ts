@@ -8,6 +8,7 @@ export const createDefaultElectronAPIMock = (): ElectronAPI => ({
   getFileInfo: vi.fn().mockResolvedValue(null),
   listModels: vi.fn().mockResolvedValue({ models: [] }),
   deleteModel: vi.fn().mockResolvedValue({ success: true }),
+  checkFFmpeg: vi.fn().mockResolvedValue(true),
   getGpuStatus: vi.fn().mockResolvedValue({ available: false }),
   downloadModel: vi
     .fn()
@@ -43,6 +44,7 @@ export const createFullElectronAPIMock = (): ElectronAPI => ({
   getFileInfo: vi.fn().mockResolvedValue({ name: 'file.mp3', path: '/path/file.mp3', size: 10 }),
   listModels: vi.fn().mockResolvedValue({ models: [] }),
   deleteModel: vi.fn().mockResolvedValue({ success: true }),
+  checkFFmpeg: vi.fn().mockResolvedValue(true),
   getGpuStatus: vi.fn().mockResolvedValue({ available: true, type: 'gpu', name: 'GPU' }),
   downloadModel: vi.fn().mockResolvedValue({ success: true, model: 'base', path: '/model' }),
   onModelDownloadProgress: vi.fn().mockReturnValue(() => {}),

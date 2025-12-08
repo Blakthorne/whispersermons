@@ -1,4 +1,5 @@
 import React, { useState, useEffect, type ChangeEvent } from 'react';
+import { Download, Check, Trash2, Zap, Cpu } from 'lucide-react';
 import './SettingsPanel.css';
 
 import type {
@@ -157,8 +158,11 @@ function SettingsPanel({
           aria-live="polite"
           aria-label={`GPU acceleration: ${gpuInfo.available ? 'enabled' : 'disabled'}. Using ${gpuInfo.name}`}
         >
-          <span className="gpu-icon" aria-hidden="true">
-            {gpuInfo.available ? '🚀' : '💻'}
+          <span
+            className="gpu-icon"
+            aria-label={gpuInfo.available ? 'GPU enabled' : 'GPU disabled'}
+          >
+            {gpuInfo.available ? <Zap size={16} /> : <Cpu size={16} />}
           </span>
           <span className="gpu-text">{gpuInfo.name}</span>
         </div>
@@ -218,7 +222,7 @@ function SettingsPanel({
                     disabled={disabled}
                     aria-label={`Download ${selectedModel.name} model, size ${selectedModel.size}`}
                   >
-                    ⬇️ Download {selectedModel.size}
+                    <Download size={14} /> Download {selectedModel.size}
                   </button>
                 )}
               </div>
@@ -226,7 +230,9 @@ function SettingsPanel({
 
             {selectedModel.downloaded && (
               <div className="model-ready-container">
-                <span className="model-ready">✓ Ready to use</span>
+                <span className="model-ready">
+                  <Check size={14} /> Ready to use
+                </span>
                 <button
                   className="btn-delete-model"
                   onClick={() => handleDeleteModel(selectedModel.name)}
@@ -234,7 +240,7 @@ function SettingsPanel({
                   title="Delete model"
                   aria-label={`Delete ${selectedModel.name} model`}
                 >
-                  🗑️
+                  <Trash2 size={16} />
                 </button>
               </div>
             )}
