@@ -1,6 +1,6 @@
 {
   "name": "whisperdesk",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "type": "module",
   "description": "Desktop transcription app powered by whisper.cpp",
   "license": "MIT",

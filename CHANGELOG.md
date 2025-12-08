@@ -1,3 +1,15 @@
+## [1.5.0](https://github.com/PVAS-Development/whisperdesk/compare/v1.4.2...v1.5.0) (2025-12-08)
+
+### ✨ Features
+
+- add analytics tracking for FFmpeg events ([71cf9a0](https://github.com/PVAS-Development/whisperdesk/commit/71cf9a09e99f89b39fdcb59e65d2ac08b5d090f8))
+- add FFmpeg availability check and system warning component ([ecfd089](https://github.com/PVAS-Development/whisperdesk/commit/ecfd089d0c4a3b64fcad383023bbd1714c60bef6))
+
+### 🐛 Bug Fixes
+
+- enhance FFmpeg availability check and improve UI feedback for system requirements ([d1b6d3a](https://github.com/PVAS-Development/whisperdesk/commit/d1b6d3a58b7e33eb443e0564f27aea3d39b83730))
+- improve FFmpeg availability check and enhance accessibility in UI components ([facd62f](https://github.com/PVAS-Development/whisperdesk/commit/facd62f80b517b891f4b41f92469fc8896702e00))
+
 ## [1.4.2](https://github.com/PVAS-Development/whisperdesk/compare/v1.4.1...v1.4.2) (2025-12-05)
 
 ### 🐛 Bug Fixes
