@@ -3,7 +3,21 @@ import { Heart, Coffee } from 'lucide-react';
 import { openExternal, trackEvent } from '../../../../services/electronAPI';
 import './DonationSection.css';
 
+const PAYPAL_DONATION_URL = 'https://www.paypal.com/donate/?hosted_button_id=HTJXGMEGMWWD6';
+const BUY_ME_A_COFFEE_URL = 'https://www.buymeacoffee.com/pedrovsiqueira';
+
 export function DonationSection(): React.JSX.Element {
+  const handleDonationClick = async (url: string, type: string) => {
+    trackEvent('donation_clicked', { location: 'left_panel', type }).catch((error) => {
+      console.error(`Failed to track donation click (type: ${type}, url: ${url}):`, error);
+    });
+    try {
+      await openExternal(url);
+    } catch (error) {
+      console.error('Failed to open donation link:', error);
+    }
+  };
+
   return (
     <div className="donation-container">
       <p className="donation-text">Enjoying the app?</p>
@@ -11,14 +25,7 @@ export function DonationSection(): React.JSX.Element {
         <button
           className="donation-link"
           aria-label="Donate via PayPal"
-          onClick={async () => {
-            trackEvent('donation_clicked', { location: 'left_panel', type: 'paypal' });
-            try {
-              await openExternal('https://www.paypal.com/donate/?hosted_button_id=HTJXGMEGMWWD6');
-            } catch (error) {
-              console.error('Failed to open donation link:', error);
-            }
-          }}
+          onClick={() => handleDonationClick(PAYPAL_DONATION_URL, 'paypal')}
         >
           Donate <Heart size={12} className="heart-icon" fill="currentColor" />
         </button>
@@ -26,14 +33,7 @@ export function DonationSection(): React.JSX.Element {
         <button
           className="donation-link"
           aria-label="Buy me a coffee"
-          onClick={async () => {
-            trackEvent('donation_clicked', { location: 'left_panel', type: 'buymeacoffee' });
-            try {
-              await openExternal('https://www.buymeacoffee.com/pedrovsiqueira');
-            } catch (error) {
-              console.error('Failed to open donation link:', error);
-            }
-          }}
+          onClick={() => handleDonationClick(BUY_ME_A_COFFEE_URL, 'buymeacoffee')}
         >
           Buy me a coffee <Coffee size={12} className="coffee-icon" />
         </button>

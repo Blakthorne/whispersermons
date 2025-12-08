@@ -96,6 +96,54 @@ describe('DonationSection', () => {
     consoleErrorSpy.mockRestore();
   });
 
+  it('should handle error when trackEvent fails for PayPal', async () => {
+    const mockTrackEvent = vi.fn().mockRejectedValue(new Error('Failed to track'));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    overrideElectronAPI({
+      trackEvent: mockTrackEvent,
+      openExternal: vi.fn().mockResolvedValue(undefined),
+    });
+
+    render(<DonationSection />);
+
+    const paypalButton = screen.getByLabelText('Donate via PayPal');
+    fireEvent.click(paypalButton);
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to track donation click'),
+        expect.any(Error)
+      );
+    });
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('should handle error when trackEvent fails for Buy Me a Coffee', async () => {
+    const mockTrackEvent = vi.fn().mockRejectedValue(new Error('Failed to track'));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    overrideElectronAPI({
+      trackEvent: mockTrackEvent,
+      openExternal: vi.fn().mockResolvedValue(undefined),
+    });
+
+    render(<DonationSection />);
+
+    const coffeeButton = screen.getByLabelText('Buy me a coffee');
+    fireEvent.click(coffeeButton);
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to track donation click'),
+        expect.any(Error)
+      );
+    });
+
+    consoleErrorSpy.mockRestore();
+  });
+
   it('should have proper aria-labels for accessibility', () => {
     render(<DonationSection />);
 

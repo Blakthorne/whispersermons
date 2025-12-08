@@ -33,12 +33,16 @@ A beautiful, native macOS desktop application for transcribing audio and video f
 ## 📋 Requirements
 
 - **macOS** 10.15 (Catalina) or later
-- **FFmpeg** (for audio processing)
+- **FFmpeg** (Required for audio processing)
 - ~500MB disk space (for whisper.cpp and models)
+
+> **Note:** WhisperDesk requires FFmpeg to process audio files. The app will check for it on startup and guide you if it's missing.
 
 ## 🚀 Installation
 
 ### 1. Install Prerequisites
+
+WhisperDesk requires **FFmpeg** to be installed on your system to process audio and video files.
 
 #### Install Homebrew (if not already installed)
 
@@ -65,7 +69,8 @@ brew install cmake
 1. Download the latest `WhisperDesk-x.x.x.dmg` from [Releases](https://github.com/PVAS-Development/whisperdesk/releases)
 2. Open the DMG file
 3. Drag WhisperDesk to your Applications folder
-4. Launch WhisperDesk from Applications
+4. **Important:** Ensure you have FFmpeg installed (see [Prerequisites](#1-install-prerequisites))
+5. Launch WhisperDesk from Applications
 
 #### Option B: Build from Source
 
