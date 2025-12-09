@@ -183,6 +183,25 @@ describe('FileDropZone', () => {
     });
   });
 
+  it('should not call onFileSelect when getPathForFile returns falsy value', () => {
+    const onFileSelect = vi.fn();
+    overrideElectronAPI({
+      getPathForFile: vi.fn().mockReturnValue(undefined),
+    });
+
+    render(<FileDropZone onFileSelect={onFileSelect} selectedFile={null} disabled={false} />);
+
+    const dropzone = screen.getByRole('button');
+
+    const file = new File(['audio content'], 'audio.mp3', { type: 'audio/mp3' });
+
+    fireEvent.drop(dropzone, {
+      dataTransfer: { files: [file] },
+    });
+
+    expect(onFileSelect).not.toHaveBeenCalled();
+  });
+
   it('should not handle file drop when disabled', () => {
     const onFileSelect = vi.fn();
 
