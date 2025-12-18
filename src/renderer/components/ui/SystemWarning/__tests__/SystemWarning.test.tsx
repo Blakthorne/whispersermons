@@ -62,20 +62,28 @@ describe('SystemWarning', () => {
   });
 
   it('calls onRefresh when check button is clicked', async () => {
+    let resolveRefresh: (value: boolean) => void;
+    const refreshPromise = new Promise<boolean>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    mockOnRefresh.mockReturnValue(refreshPromise);
+
     render(<SystemWarning onRefresh={mockOnRefresh} />);
 
     const refreshButton = screen.getByRole('button', { name: /I have installed FFmpeg/i });
 
-    await act(async () => {
-      fireEvent.click(refreshButton);
-    });
+    fireEvent.click(refreshButton);
 
-    expect(mockOnRefresh).toHaveBeenCalled();
     expect(screen.getByText(/Verifying Installation.../i)).toBeInTheDocument();
+    expect(refreshButton).toBeDisabled();
+    expect(mockOnRefresh).toHaveBeenCalled();
+
+    resolveRefresh!(true);
 
     await waitFor(() => {
       expect(refreshButton).not.toBeDisabled();
     });
+    expect(screen.queryByText(/Verifying Installation.../i)).not.toBeInTheDocument();
   });
 
   it('copies command to clipboard', async () => {

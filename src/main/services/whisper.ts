@@ -580,7 +580,11 @@ export function transcribe(
               vttPath,
               stdoutLength: stdout.length,
             });
-            reject(new Error('Transcription produced no output'));
+            reject(
+              new Error(
+                'Transcription produced no output. The audio file might be empty, silent, or contain no valid audio stream.'
+              )
+            );
             return;
           }
 

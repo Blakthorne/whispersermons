@@ -9,3 +9,6 @@ export type { UseCopyToClipboardReturn } from './useCopyToClipboard';
 
 export { useFFmpegStatus } from './useFFmpegStatus';
 export type { UseFFmpegStatusReturn } from './useFFmpegStatus';
+
+export { useDebugLogs } from './useDebugLogs';
+export type { UseDebugLogsReturn } from './useDebugLogs';

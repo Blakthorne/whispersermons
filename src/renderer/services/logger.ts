@@ -8,6 +8,8 @@ interface LogEntry {
 }
 
 const isDev = process.env.NODE_ENV === 'development';
+const MAX_LOG_ENTRIES = 500;
+const logBuffer: LogEntry[] = [];
 
 function formatMessage(level: LogLevel, message: string, data?: unknown): string {
   const timestamp = new Date().toISOString();
@@ -15,7 +17,24 @@ function formatMessage(level: LogLevel, message: string, data?: unknown): string
   return data !== undefined ? `${prefix} ${message}` : `${prefix} ${message}`;
 }
 
+function storeLogEntry(level: LogLevel, message: string, data?: unknown): void {
+  const entry: LogEntry = {
+    level,
+    message,
+    data,
+    timestamp: new Date(),
+  };
+
+  logBuffer.push(entry);
+
+  if (logBuffer.length > MAX_LOG_ENTRIES) {
+    logBuffer.shift();
+  }
+}
+
 function log(level: LogLevel, message: string, data?: unknown): void {
+  storeLogEntry(level, message, data);
+
   if (!isDev) return;
 
   const formattedMessage = formatMessage(level, message, data);
@@ -52,12 +71,27 @@ function log(level: LogLevel, message: string, data?: unknown): void {
   }
 }
 
+function getLogs(): LogEntry[] {
+  return [...logBuffer];
+}
+
+function clearLogs(): void {
+  logBuffer.length = 0;
+}
+
+function getLogCount(): number {
+  return logBuffer.length;
+}
+
 export const logger = {
   debug: (message: string, data?: unknown): void => log('debug', message, data),
   info: (message: string, data?: unknown): void => log('info', message, data),
   warn: (message: string, data?: unknown): void => log('warn', message, data),
   error: (message: string, data?: unknown): void => log('error', message, data),
   isEnabled: (): boolean => isDev,
+  getLogs,
+  clearLogs,
+  getLogCount,
 };
 
 export type { LogEntry, LogLevel };
