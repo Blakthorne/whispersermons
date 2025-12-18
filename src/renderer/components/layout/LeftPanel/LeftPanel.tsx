@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { FileDropZone } from '../../../features/transcription';
 import { SettingsPanel } from '../../../features/settings';
 import { useAppTranscription } from '../../../contexts';
@@ -14,13 +14,13 @@ function LeftPanel(): React.JSX.Element {
     selectedFile,
     settings,
     isTranscribing,
+    isFFmpegAvailable,
     setSelectedFile,
     setSettings,
     setModelDownloaded,
+    setIsFFmpegAvailable,
     handleFileSelect,
   } = useAppTranscription();
-
-  const [isFFmpegAvailable, setIsFFmpegAvailable] = useState<boolean | null>(null);
 
   const checkStatus = useCallback(async () => {
     try {
@@ -32,7 +32,7 @@ function LeftPanel(): React.JSX.Element {
       setIsFFmpegAvailable(false);
       return false;
     }
-  }, []);
+  }, [setIsFFmpegAvailable]);
 
   useEffect(() => {
     checkStatus();

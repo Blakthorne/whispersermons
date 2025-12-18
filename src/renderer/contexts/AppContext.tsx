@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, type ReactNode } from 'react';
+import React, { useState, useCallback, useMemo, type ReactNode } from 'react';
 import { useTranscription } from '../features/transcription';
 import { useHistory } from '../features/history';
 import { useTheme, useCopyToClipboard, useElectronMenu } from '../hooks';
@@ -128,6 +128,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     ]
   );
 
+  const [isFFmpegAvailable, setIsFFmpegAvailable] = useState<boolean | null>(null);
+
   const transcriptionStateValue = useMemo<TranscriptionStateContextValue>(
     () => ({
       selectedFile,
@@ -139,6 +141,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       error,
       modelDownloaded,
       copySuccess,
+      isFFmpegAvailable,
     }),
     [
       selectedFile,
@@ -150,6 +153,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       error,
       modelDownloaded,
       copySuccess,
+      isFFmpegAvailable,
     ]
   );
 
@@ -158,6 +162,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       setSelectedFile,
       setSettings,
       setModelDownloaded,
+      setIsFFmpegAvailable,
       handleFileSelect,
       handleTranscribe,
       handleCancel,
@@ -168,6 +173,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       setSelectedFile,
       setSettings,
       setModelDownloaded,
+      setIsFFmpegAvailable,
       handleFileSelect,
       handleTranscribe,
       handleCancel,
