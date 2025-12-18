@@ -67,20 +67,22 @@
 </head>
 
 <body>
-    <nav class="navbar" role="navigation" aria-label="Main navigation">
-        <div class="container nav-inner">
-            <a href="index.html" class="logo" aria-label="WhisperDesk Home">
-                <img src="icon.png" alt="WhisperDesk Logo" width="32" height="32" />
-                <span class="logo-text">WhisperDesk</span>
-            </a>
-            <div class="nav-actions">
-                <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">
-                    <i data-lucide="moon" class="moon-icon" aria-hidden="true"></i>
-                    <i data-lucide="sun" class="sun-icon" aria-hidden="true"></i>
-                </button>
+    <header>
+        <nav class="nav" role="navigation" aria-label="Main navigation">
+            <div class="container nav-inner">
+                <a href="index.html" class="nav-logo" aria-label="WhisperDesk Home">
+                    <img src="icon.png" alt="WhisperDesk Logo" class="nav-logo-icon" width="32" height="32" />
+                    <span>WhisperDesk</span>
+                </a>
+                <div class="nav-links">
+                    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" type="button">
+                        <i data-lucide="sun" class="theme-icon-light"></i>
+                        <i data-lucide="moon" class="theme-icon-dark"></i>
+                    </button>
+                </div>
             </div>
-        </div>
-    </nav>
+        </nav>
+    </header>
 
     <main class="policy-container">
         <a href="index.html" class="back-link">
