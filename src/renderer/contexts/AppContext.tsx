@@ -6,14 +6,12 @@ import type { HistoryItem } from '../types';
 import {
   ThemeContext,
   HistoryContext,
-  TranscriptionContext,
   TranscriptionStateContext,
   TranscriptionActionsContext,
 } from './contexts';
 import type {
   ThemeContextValue,
   HistoryContextValue,
-  TranscriptionContextValue,
   TranscriptionStateContextValue,
   TranscriptionActionsContextValue,
 } from './types';
@@ -176,24 +174,14 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     ]
   );
 
-  const transcriptionContextValue = useMemo<TranscriptionContextValue>(
-    () => ({
-      ...transcriptionStateValue,
-      ...transcriptionActionsValue,
-    }),
-    [transcriptionStateValue, transcriptionActionsValue]
-  );
-
   return (
     <ThemeContext.Provider value={themeContextValue}>
       <HistoryContext.Provider value={historyContextValue}>
-        <TranscriptionContext.Provider value={transcriptionContextValue}>
-          <TranscriptionStateContext.Provider value={transcriptionStateValue}>
-            <TranscriptionActionsContext.Provider value={transcriptionActionsValue}>
-              {children}
-            </TranscriptionActionsContext.Provider>
-          </TranscriptionStateContext.Provider>
-        </TranscriptionContext.Provider>
+        <TranscriptionStateContext.Provider value={transcriptionStateValue}>
+          <TranscriptionActionsContext.Provider value={transcriptionActionsValue}>
+            {children}
+          </TranscriptionActionsContext.Provider>
+        </TranscriptionStateContext.Provider>
       </HistoryContext.Provider>
     </ThemeContext.Provider>
   );

@@ -35,7 +35,6 @@ function getSystemInfo(osVersion?: string): string {
     `- **Platform**: ${navigator.platform}`,
     `- **OS Version**: ${osVersion || 'Unknown'}`,
     `- **User Agent**: ${navigator.userAgent}`,
-    `- **User Agent**: ${navigator.userAgent}`,
     `- **Language**: ${navigator.language}`,
     `- **Online**: ${navigator.onLine}`,
     `- **Timestamp**: ${new Date().toISOString()}`,

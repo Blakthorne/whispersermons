@@ -14,7 +14,14 @@ const logBuffer: LogEntry[] = [];
 function formatMessage(level: LogLevel, message: string, data?: unknown): string {
   const timestamp = new Date().toISOString();
   const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
-  return data !== undefined ? `${prefix} ${message}` : `${prefix} ${message}`;
+  if (data !== undefined) {
+    try {
+      return `${prefix} ${message} ${JSON.stringify(data)}`;
+    } catch {
+      return `${prefix} ${message} [Data]`;
+    }
+  }
+  return `${prefix} ${message}`;
 }
 
 function storeLogEntry(level: LogLevel, message: string, data?: unknown): void {
@@ -35,7 +42,7 @@ function storeLogEntry(level: LogLevel, message: string, data?: unknown): void {
 function log(level: LogLevel, message: string, data?: unknown): void {
   storeLogEntry(level, message, data);
 
-  if (!isDev) return;
+  if (!isDev && level !== 'error') return;
 
   const formattedMessage = formatMessage(level, message, data);
 

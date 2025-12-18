@@ -16,6 +16,7 @@ import {
   saveFile,
 } from '../../../services/electronAPI';
 import { logger } from '../../../services/logger';
+import { sanitizePath } from '../../../../shared/utils';
 
 interface UseTranscriptionOptions {
   onHistoryAdd?: (item: HistoryItem) => void;
@@ -109,7 +110,7 @@ export function useTranscription(options: UseTranscriptionOptions = {}): UseTran
 
       logger.info('File selected', {
         name: file.name,
-        path: file.path,
+        path: sanitizePath(file.path),
 
         size: file.size,
       });
@@ -137,7 +138,7 @@ export function useTranscription(options: UseTranscriptionOptions = {}): UseTran
     setTranscriptionStartTime(Date.now());
 
     logger.info('Starting transcription', {
-      file: selectedFile.path,
+      file: sanitizePath(selectedFile.path),
       model: settings.model,
       language: settings.language,
     });
@@ -271,7 +272,7 @@ export function useTranscription(options: UseTranscriptionOptions = {}): UseTran
 
       if (result?.success && result.filePath) {
         setProgress({ percent: 100, status: `Saved to ${result.filePath}` });
-        logger.info('File saved', { path: result.filePath, format });
+        logger.info('File saved', { path: sanitizePath(result.filePath), format });
         scheduleProgressReset(APP_CONFIG.SAVE_SUCCESS_MESSAGE_DURATION);
       } else if (result?.error) {
         setError(`Failed to save: ${result.error}`);

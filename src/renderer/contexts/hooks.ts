@@ -2,7 +2,6 @@ import { useContext } from 'react';
 import {
   ThemeContext,
   HistoryContext,
-  TranscriptionContext,
   TranscriptionStateContext,
   TranscriptionActionsContext,
 } from './contexts';
@@ -31,11 +30,14 @@ export function useAppHistory(): HistoryContextValue {
 }
 
 export function useAppTranscription(): TranscriptionContextValue {
-  const context = useContext(TranscriptionContext);
-  if (!context) {
+  const state = useContext(TranscriptionStateContext);
+  const actions = useContext(TranscriptionActionsContext);
+
+  if (!state || !actions) {
     throw new Error('useAppTranscription must be used within AppProvider');
   }
-  return context;
+
+  return { ...state, ...actions };
 }
 
 export function useAppTranscriptionState(): TranscriptionStateContextValue {

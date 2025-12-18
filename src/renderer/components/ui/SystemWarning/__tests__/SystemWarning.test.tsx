@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { SystemWarning } from '../SystemWarning';
 import { overrideElectronAPI } from '../../../../test/utils';
+import { logger } from '../../../../services/logger';
 
 const mockCopyToClipboard = vi.fn();
 vi.mock('../../../../hooks/useCopyToClipboard', () => ({
@@ -124,7 +125,6 @@ describe('SystemWarning', () => {
 
   it('handles openExternal error when clicking download link', async () => {
     const mockOpenExternal = vi.fn().mockRejectedValue(new Error('Failed to open'));
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     overrideElectronAPI({
       openExternal: mockOpenExternal,
       trackEvent: vi.fn().mockResolvedValue(undefined),
@@ -136,15 +136,12 @@ describe('SystemWarning', () => {
     fireEvent.click(downloadButton);
 
     await waitFor(() => {
-      expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to open link:', expect.any(Error));
+      expect(logger.error).toHaveBeenCalledWith('Failed to open link:', expect.any(Error));
     });
-
-    consoleErrorSpy.mockRestore();
   });
 
   it('handles trackEvent error when clicking download link', async () => {
     const mockTrackEvent = vi.fn().mockRejectedValue(new Error('Failed to track'));
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     overrideElectronAPI({
       openExternal: vi.fn().mockResolvedValue(undefined),
       trackEvent: mockTrackEvent,
@@ -156,18 +153,15 @@ describe('SystemWarning', () => {
     fireEvent.click(downloadButton);
 
     await waitFor(() => {
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining('Failed to track FFmpeg download link click'),
         expect.any(Error)
       );
     });
-
-    consoleErrorSpy.mockRestore();
   });
 
   it('handles trackEvent error when clicking refresh', async () => {
     const mockTrackEvent = vi.fn().mockRejectedValue(new Error('Failed to track'));
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     overrideElectronAPI({
       trackEvent: mockTrackEvent,
     });
@@ -181,18 +175,15 @@ describe('SystemWarning', () => {
     });
 
     await waitFor(() => {
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect(logger.error).toHaveBeenCalledWith(
         'Failed to track refresh event:',
         expect.any(Error)
       );
     });
-
-    consoleErrorSpy.mockRestore();
   });
 
   it('handles trackEvent error when clicking copy', async () => {
     const mockTrackEvent = vi.fn().mockRejectedValue(new Error('Failed to track'));
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     overrideElectronAPI({
       getAppInfo: vi.fn().mockResolvedValue({ platform: 'darwin', version: '1.0.0', isDev: true }),
       trackEvent: mockTrackEvent,
@@ -208,17 +199,11 @@ describe('SystemWarning', () => {
     fireEvent.click(copyButton);
 
     await waitFor(() => {
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Failed to track copy event:',
-        expect.any(Error)
-      );
+      expect(logger.error).toHaveBeenCalledWith('Failed to track copy event:', expect.any(Error));
     });
-
-    consoleErrorSpy.mockRestore();
   });
 
   it('handles getAppInfo error', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     overrideElectronAPI({
       getAppInfo: vi.fn().mockRejectedValue(new Error('Failed to get info')),
     });
@@ -226,13 +211,8 @@ describe('SystemWarning', () => {
     render(<SystemWarning onRefresh={mockOnRefresh} />);
 
     await waitFor(() => {
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Failed to get platform info:',
-        expect.any(Error)
-      );
+      expect(logger.error).toHaveBeenCalledWith('Failed to get platform info:', expect.any(Error));
     });
-
-    consoleErrorSpy.mockRestore();
   });
 
   it('retries onRefresh if first attempt fails (returns false)', async () => {
@@ -259,7 +239,6 @@ describe('SystemWarning', () => {
   });
 
   it('handles onRefresh error', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockOnRefresh.mockRejectedValue(new Error('Refresh failed'));
 
     render(<SystemWarning onRefresh={mockOnRefresh} />);
@@ -277,7 +256,5 @@ describe('SystemWarning', () => {
     await waitFor(() => {
       expect(refreshButton).not.toBeDisabled();
     });
-
-    consoleErrorSpy.mockRestore();
   });
 });
