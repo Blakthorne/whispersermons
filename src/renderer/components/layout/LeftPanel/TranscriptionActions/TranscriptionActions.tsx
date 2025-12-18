@@ -6,9 +6,7 @@ export interface TranscriptionActionsProps {
   isFFmpegAvailable: boolean | null;
 }
 
-export function TranscriptionActions({
-  isFFmpegAvailable,
-}: TranscriptionActionsProps): React.JSX.Element {
+function TranscriptionActions({ isFFmpegAvailable }: TranscriptionActionsProps): React.JSX.Element {
   const { selectedFile, isTranscribing, modelDownloaded, handleTranscribe, handleCancel } =
     useAppTranscription();
 
@@ -44,3 +42,5 @@ export function TranscriptionActions({
     </div>
   );
 }
+
+export { TranscriptionActions };
