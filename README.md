@@ -136,7 +136,7 @@ Models are downloaded automatically on first use and cached in:
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22.12+ (use `nvm use` to auto-switch via `.nvmrc`)
 - CMake (for building whisper.cpp)
 - FFmpeg
 
