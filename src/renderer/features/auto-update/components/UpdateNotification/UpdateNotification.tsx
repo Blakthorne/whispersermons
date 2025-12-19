@@ -1,5 +1,6 @@
 import { useAutoUpdate } from '../../hooks/useAutoUpdate';
 import { convertHtmlToText, formatFileSize } from '../../../../utils';
+import { Button } from '../../../../components/ui';
 import { X, AlertTriangle, Sparkles, Download, CheckCircle } from 'lucide-react';
 import './UpdateNotification.css';
 
@@ -30,9 +31,14 @@ function UpdateNotification() {
   return (
     <div className="update-notification" onClick={dismissUpdate}>
       <div className="update-notification-content" onClick={(e) => e.stopPropagation()}>
-        <button onClick={dismissUpdate} className="btn-close" aria-label="Close">
-          <X size={20} />
-        </button>
+        <Button
+          variant="ghost"
+          icon={<X size={20} />}
+          iconOnly
+          onClick={dismissUpdate}
+          aria-label="Close"
+          className="update-close-btn"
+        />
 
         {error && (
           <div className="update-error">
@@ -45,13 +51,14 @@ function UpdateNotification() {
                 <p>{error}</p>
               </div>
             </div>
-            <button
+            <Button
+              variant="secondary"
               onClick={dismissUpdate}
               className="btn-dismiss"
               style={{ alignSelf: 'flex-end' }}
             >
               Dismiss
-            </button>
+            </Button>
           </div>
         )}
 
@@ -75,12 +82,12 @@ function UpdateNotification() {
               </details>
             )}
             <div className="update-actions">
-              <button onClick={downloadUpdate} className="btn-download">
+              <Button variant="primary" onClick={downloadUpdate} className="btn-download">
                 Download Update
-              </button>
-              <button onClick={dismissUpdate} className="btn-dismiss">
+              </Button>
+              <Button variant="secondary" onClick={dismissUpdate} className="btn-dismiss">
                 Later
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -126,12 +133,12 @@ function UpdateNotification() {
               </div>
             </div>
             <div className="update-actions">
-              <button onClick={installUpdate} className="btn-install">
+              <Button variant="primary" onClick={installUpdate} className="btn-install">
                 Restart & Install
-              </button>
-              <button onClick={dismissUpdate} className="btn-dismiss">
+              </Button>
+              <Button variant="secondary" onClick={dismissUpdate} className="btn-dismiss">
                 Later
-              </button>
+              </Button>
             </div>
           </div>
         )}
