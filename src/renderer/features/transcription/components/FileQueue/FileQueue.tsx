@@ -53,8 +53,9 @@ function FileQueue({
     onSelectItem?.(id);
   };
 
-  const handleRemoveClick = (e: React.MouseEvent, id: string): void => {
+  const handleRemoveClick = (e: React.MouseEvent, id: string, isProcessing: boolean): void => {
     e.stopPropagation();
+    if (disabled || isProcessing) return;
     onRemove(id);
   };
 
@@ -119,7 +120,7 @@ function FileQueue({
               size="sm"
               icon={<X size={14} />}
               iconOnly
-              onClick={(e) => handleRemoveClick(e, item.id)}
+              onClick={(e) => handleRemoveClick(e, item.id, item.status === 'processing')}
               disabled={disabled || item.status === 'processing'}
               title="Remove from queue"
               aria-label={`Remove ${item.file.name} from queue`}
