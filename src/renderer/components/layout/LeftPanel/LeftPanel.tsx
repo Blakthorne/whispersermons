@@ -10,15 +10,11 @@ import { SystemWarning } from '../../ui';
 
 function LeftPanel(): React.JSX.Element {
   const {
-    selectedFile,
     settings,
     isTranscribing,
-    setSelectedFile,
     setSettings,
     setModelDownloaded,
-    handleFileSelect,
     queue,
-    isBatchMode,
     selectedQueueItemId,
     handleFilesSelect,
     removeFromQueue,
@@ -38,15 +34,12 @@ function LeftPanel(): React.JSX.Element {
       {isFFmpegAvailable === false && <SystemWarning onRefresh={recheckStatus} />}
 
       <FileDropZone
-        onFileSelect={handleFileSelect}
         onFilesSelect={handleFilesSelect}
-        selectedFile={isBatchMode ? null : selectedFile}
         queueCount={queue.length}
         disabled={isTranscribing}
-        onClear={() => setSelectedFile(null)}
       />
 
-      {isBatchMode && (
+      {queue.length > 0 && (
         <FileQueue
           queue={queue}
           onRemove={removeFromQueue}

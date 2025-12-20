@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Zap, Files } from 'lucide-react';
+import { Zap } from 'lucide-react';
 import { Button } from '../../../../components/ui';
 import { useAppTranscription } from '../../../../contexts';
 
@@ -8,65 +8,28 @@ export interface TranscriptionActionsProps {
 }
 
 function TranscriptionActions({ isFFmpegAvailable }: TranscriptionActionsProps): React.JSX.Element {
-  const {
-    selectedFile,
-    isTranscribing,
-    modelDownloaded,
-    handleTranscribe,
-    handleCancel,
-    queue,
-    isBatchMode,
-    handleBatchTranscribe,
-    handleBatchCancel,
-  } = useAppTranscription();
+  const { isTranscribing, modelDownloaded, handleTranscribe, handleCancel, queue } =
+    useAppTranscription();
 
-  const { pendingCount, retryableCount } = useMemo(() => {
-    let pending = 0;
+  const { retryableCount } = useMemo(() => {
     let retryable = 0;
     for (const item of queue) {
       if (item.status === 'pending') {
-        pending++;
         retryable++;
       } else if (item.status === 'cancelled' || item.status === 'error') {
         retryable++;
       }
     }
-    return { pendingCount: pending, retryableCount: retryable };
+    return { retryableCount: retryable };
   }, [queue]);
 
-  const canTranscribeSingle = selectedFile && modelDownloaded && isFFmpegAvailable === true;
-  const canTranscribeBatch =
-    isBatchMode && retryableCount > 0 && modelDownloaded && isFFmpegAvailable === true;
-  const canTranscribe = isBatchMode ? canTranscribeBatch : canTranscribeSingle;
+  const canTranscribe = retryableCount > 0 && modelDownloaded && isFFmpegAvailable === true;
 
   const getDisabledReason = (): string => {
     if (!isFFmpegAvailable) return 'Please install FFmpeg first';
     if (!modelDownloaded) return 'Please download the selected model first';
-    if (isBatchMode && retryableCount === 0) return 'All files have been transcribed';
+    if (retryableCount === 0) return 'Add files to queue to transcribe';
     return '';
-  };
-
-  const handleTranscribeClick = (): void => {
-    if (isBatchMode) {
-      handleBatchTranscribe();
-    } else {
-      handleTranscribe();
-    }
-  };
-
-  const handleCancelClick = (): void => {
-    if (isBatchMode) {
-      handleBatchCancel();
-    } else {
-      handleCancel();
-    }
-  };
-
-  const getButtonLabel = (): string => {
-    if (isBatchMode) {
-      return pendingCount > 0 ? `Transcribe All (${pendingCount})` : 'Transcribe All';
-    }
-    return 'Transcribe';
   };
 
   return (
@@ -75,20 +38,20 @@ function TranscriptionActions({ isFFmpegAvailable }: TranscriptionActionsProps):
         <Button
           variant="primary"
           size="lg"
-          icon={isBatchMode ? <Files size={18} /> : <Zap size={18} />}
-          onClick={handleTranscribeClick}
+          icon={<Zap size={18} />}
+          onClick={handleTranscribe}
           disabled={!canTranscribe}
-          aria-label={isBatchMode ? 'Start batch transcription' : 'Start transcription'}
+          aria-label="Start transcription"
           title={getDisabledReason()}
           fullWidth
         >
-          {getButtonLabel()}
+          Transcribe
         </Button>
       ) : (
         <Button
           variant="danger"
           size="lg"
-          onClick={handleCancelClick}
+          onClick={handleCancel}
           aria-label="Cancel ongoing transcription"
           fullWidth
         >

@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useBatchQueue } from '../hooks/useBatchQueue';
 import { overrideElectronAPI } from '@/test/utils';
-import type { TranscriptionSettings, SelectedFile } from '@/types';
+import type {
+  TranscriptionSettings,
+  SelectedFile,
+  TranscriptionResult,
+  TranscriptionProgress,
+} from '@/types';
 
 describe('useBatchQueue', () => {
   const mockSettings: TranscriptionSettings = {
@@ -474,6 +479,95 @@ describe('useBatchQueue', () => {
       });
 
       expect(result.current.queue[0]!.status).toBe('completed');
+    });
+  });
+
+  describe('progress and cancellation flow', () => {
+    it('should update item progress during processing', async () => {
+      let progressCb: ((progress: TranscriptionProgress) => void) | undefined;
+      let resolveTranscription: (val: TranscriptionResult) => void = () => {};
+      const startPromise = new Promise<TranscriptionResult>((resolve) => {
+        resolveTranscription = resolve;
+      });
+
+      overrideElectronAPI({
+        startTranscription: vi.fn().mockReturnValue(startPromise),
+        onTranscriptionProgress: (cb) => {
+          progressCb = cb;
+          return () => {};
+        },
+        cancelTranscription: vi.fn(),
+      });
+
+      const { result } = renderHook(() => useBatchQueue({ settings: mockSettings }));
+
+      act(() => {
+        result.current.addFiles([createMockSelectedFile('audio1.mp3')]);
+      });
+
+      let processingPromise: Promise<void>;
+      act(() => {
+        processingPromise = result.current.startProcessing();
+      });
+
+      act(() => {
+        if (progressCb) {
+          progressCb({ percent: 50, status: 'Halfway' });
+        }
+      });
+
+      expect(result.current.queue[0]!.progress.percent).toBe(50);
+      expect(result.current.queue[0]!.progress.status).toBe('Halfway');
+
+      await act(async () => {
+        resolveTranscription({ success: true, text: 'Done' });
+        await processingPromise;
+      });
+
+      expect(result.current.queue[0]!.status).toBe('completed');
+    });
+
+    it('should stop sequence and mark pending items as cancelled when main cancellation occurs', async () => {
+      let resolveTranscription: (val: TranscriptionResult) => void = () => {};
+      const startPromise = new Promise<TranscriptionResult>((resolve) => {
+        resolveTranscription = resolve;
+      });
+
+      overrideElectronAPI({
+        startTranscription: vi.fn().mockReturnValue(startPromise),
+        onTranscriptionProgress: vi.fn().mockReturnValue(() => {}),
+        cancelTranscription: vi.fn().mockResolvedValue({ success: true }),
+      });
+
+      const { result } = renderHook(() => useBatchQueue({ settings: mockSettings }));
+
+      act(() => {
+        result.current.addFiles([
+          createMockSelectedFile('audio1.mp3'),
+          createMockSelectedFile('audio2.mp3'),
+        ]);
+      });
+
+      let processingPromise: Promise<void>;
+      act(() => {
+        processingPromise = result.current.startProcessing();
+      });
+
+      expect(result.current.isProcessing).toBe(true);
+      expect(result.current.queue[0]!.status).toBe('processing');
+
+      await act(async () => {
+        await result.current.cancelProcessing();
+      });
+
+      await act(async () => {
+        resolveTranscription({ success: true, text: 'Done' });
+        await processingPromise;
+      });
+
+      expect(result.current.queue[0]!.status).toBe('cancelled');
+
+      expect(result.current.queue[1]!.status).toBe('cancelled');
     });
   });
 });

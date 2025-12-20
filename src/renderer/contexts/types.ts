@@ -32,7 +32,6 @@ export interface TranscriptionStateContextValue {
   modelDownloaded: boolean;
   copySuccess: boolean;
   queue: QueueItem[];
-  isBatchMode: boolean;
   selectedQueueItemId: string | null;
 }
 
@@ -40,14 +39,11 @@ export interface TranscriptionActionsContextValue {
   setSelectedFile: (file: SelectedFile | null) => void;
   setSettings: (settings: TranscriptionSettings) => void;
   setModelDownloaded: (downloaded: boolean) => void;
-  handleFileSelect: (file: SelectedFile) => void;
   handleTranscribe: () => Promise<void>;
   handleCancel: () => Promise<void>;
   handleSave: (format?: OutputFormat) => Promise<void>;
   handleCopy: () => Promise<void>;
   handleFilesSelect: (files: SelectedFile[]) => void;
-  handleBatchTranscribe: () => Promise<void>;
-  handleBatchCancel: () => Promise<void>;
   removeFromQueue: (id: string) => void;
   clearCompletedFromQueue: () => void;
   selectQueueItem: (id: string) => void;
