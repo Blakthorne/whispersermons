@@ -84,6 +84,7 @@ function FileQueue({
             onClick={() => handleItemClick(item.id)}
             role="button"
             tabIndex={0}
+            aria-label={`Select ${item.file.name} to view transcription`}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 handleItemClick(item.id);

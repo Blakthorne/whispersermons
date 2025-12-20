@@ -110,15 +110,19 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       removeFile(id);
       if (selectedQueueItemId === id) {
         setSelectedQueueItemId(null);
+        setTranscription('');
+        setSelectedFile(null);
       }
     },
-    [removeFile, selectedQueueItemId]
+    [removeFile, selectedQueueItemId, setTranscription, setSelectedFile]
   );
 
   const clearCompletedFromQueue = useCallback((): void => {
     clearCompleted();
     setSelectedQueueItemId(null);
-  }, [clearCompleted]);
+    setTranscription('');
+    setSelectedFile(null);
+  }, [clearCompleted, setTranscription, setSelectedFile]);
 
   const { selectQueueItem } = useQueueSelection(
     queue,
@@ -145,7 +149,11 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       }
     },
     onStartTranscription: () => {
-      if (queue.some((item) => item.status === 'pending') && !isProcessing) {
+      const hasProcessableItems = queue.some(
+        (item) =>
+          item.status === 'pending' || item.status === 'error' || item.status === 'cancelled'
+      );
+      if (hasProcessableItems && !isProcessing) {
         handleTranscribe();
       }
     },

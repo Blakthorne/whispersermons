@@ -98,7 +98,7 @@ export interface QueueItem {
 }
 
 export interface HistoryItem {
-  id: number;
+  id: string;
   fileName: string;
   filePath: string;
   model: WhisperModelName;

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type {
   SelectedFile,
   TranscriptionSettings,
@@ -37,7 +37,7 @@ interface UseBatchQueueReturn {
 }
 
 function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+  return crypto.randomUUID();
 }
 
 export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueReturn {
@@ -50,6 +50,15 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
   const isCancelledRef = useRef(false);
   const hasCalledFirstCompleteRef = useRef(false);
   const progressUnsubscribeRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (progressUnsubscribeRef.current) {
+        progressUnsubscribeRef.current();
+        progressUnsubscribeRef.current = null;
+      }
+    };
+  }, []);
 
   const addFiles = useCallback((files: SelectedFile[]) => {
     const newItems: QueueItem[] = files.map((file) => ({
@@ -98,6 +107,11 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
         )
       );
       setCurrentItemId(item.id);
+
+      if (progressUnsubscribeRef.current) {
+        progressUnsubscribeRef.current();
+        progressUnsubscribeRef.current = null;
+      }
 
       progressUnsubscribeRef.current = onTranscriptionProgress((progress) => {
         setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, progress } : q)));
@@ -163,7 +177,7 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
 
         if (onHistoryAdd) {
           const historyItem: HistoryItem = {
-            id: Date.now(),
+            id: crypto.randomUUID(),
             fileName: item.file.name,
             filePath: item.file.path,
             model: settings.model,
