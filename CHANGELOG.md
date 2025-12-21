@@ -1,3 +1,10 @@
+## [1.8.0](https://github.com/PVAS-Development/whisperdesk/compare/v1.7.1...v1.8.0) (2025-12-21)
+
+### ✨ Features
+
+- add batch transcription support ([f74957c](https://github.com/PVAS-Development/whisperdesk/commit/f74957cc5768e06359dbcf0cbeb7d4aed5813fe9))
+- enhance FileQueue component to prevent removal of processing items ([4340e17](https://github.com/PVAS-Development/whisperdesk/commit/4340e179bf78582327e7874311aad24339faac20))
+
 ## [1.7.1](https://github.com/PVAS-Development/whisperdesk/compare/v1.7.0...v1.7.1) (2025-12-19)
 
 ### 🐛 Bug Fixes
