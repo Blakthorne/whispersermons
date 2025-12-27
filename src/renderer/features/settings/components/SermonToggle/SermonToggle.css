@@ -1,0 +1,104 @@
+.sermon-toggle {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--background-tertiary, #1a1a1a);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #333);
+}
+
+.sermon-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sermon-toggle-checkbox {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.sermon-toggle-checkmark {
+  position: relative;
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  background: var(--background-secondary, #2a2a2a);
+  border: 2px solid var(--border-color, #444);
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.sermon-toggle-label:hover .sermon-toggle-checkmark {
+  border-color: var(--accent-color, #3b82f6);
+}
+
+.sermon-toggle-checkbox:checked + .sermon-toggle-checkmark {
+  background: var(--accent-color, #3b82f6);
+  border-color: var(--accent-color, #3b82f6);
+}
+
+.sermon-toggle-checkmark::after {
+  content: '';
+  position: absolute;
+  display: none;
+  left: 6px;
+  top: 2px;
+  width: 5px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.sermon-toggle-checkbox:checked + .sermon-toggle-checkmark::after {
+  display: block;
+}
+
+.sermon-toggle-checkbox:disabled + .sermon-toggle-checkmark {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sermon-toggle-checkbox:disabled ~ .sermon-toggle-text {
+  opacity: 0.5;
+}
+
+.sermon-toggle-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #ffffff);
+}
+
+.sermon-toggle-description {
+  margin: 8px 0 0 32px;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  line-height: 1.4;
+}
+
+.sermon-toggle-warning {
+  color: var(--warning-color, #f59e0b);
+  font-weight: 500;
+}
+
+/* Focused state for accessibility */
+.sermon-toggle-checkbox:focus + .sermon-toggle-checkmark {
+  outline: 2px solid var(--accent-color, #3b82f6);
+  outline-offset: 2px;
+}
+
+/* Light theme support */
+[data-theme='light'] .sermon-toggle {
+  background: var(--background-tertiary, #f5f5f5);
+}
+
+[data-theme='light'] .sermon-toggle-checkmark {
+  background: var(--background-secondary, #ffffff);
+  border-color: var(--border-color, #ccc);
+}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileDropZone, FileQueue } from '../../../features/transcription';
+import { FileDropZone, FileQueue, PipelineProgress } from '../../../features/transcription';
 import { SettingsPanel } from '../../../features/settings';
 import { useAppTranscription } from '../../../contexts';
 import { useFFmpegStatus } from '../../../hooks';
@@ -20,6 +20,7 @@ function LeftPanel(): React.JSX.Element {
     removeFromQueue,
     clearCompletedFromQueue,
     selectQueueItem,
+    pipelineProgress,
   } = useAppTranscription();
 
   const { isFFmpegAvailable, isChecking, recheckStatus } = useFFmpegStatus();
@@ -47,6 +48,19 @@ function LeftPanel(): React.JSX.Element {
           onSelectItem={selectQueueItem}
           selectedItemId={selectedQueueItemId}
           disabled={isTranscribing}
+        />
+      )}
+
+      {/* Show pipeline progress when sermon processing is active */}
+      {settings.processAsSermon && (isTranscribing || pipelineProgress) && (
+        <PipelineProgress
+          progress={pipelineProgress}
+          isActive={isTranscribing}
+          isComplete={
+            !isTranscribing &&
+            pipelineProgress === null &&
+            queue.some((q) => q.status === 'completed')
+          }
         />
       )}
 

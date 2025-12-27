@@ -26,6 +26,26 @@ const mockElectronAPI: ElectronAPI = {
   }),
   cancelTranscription: vi.fn().mockResolvedValue({ success: true }),
   onTranscriptionProgress: vi.fn().mockReturnValue(() => {}),
+  // Python transcription APIs
+  startPythonTranscription: vi.fn().mockResolvedValue({
+    success: true,
+    text: 'Transcribed text',
+    duration: 10,
+    language: 'en',
+  }),
+  cancelPythonTranscription: vi.fn().mockResolvedValue({ success: true }),
+  onPipelineProgress: vi.fn().mockReturnValue(() => {}),
+  // Python environment APIs
+  checkPythonStatus: vi.fn().mockResolvedValue({
+    installed: true,
+    packagesInstalled: true,
+    modelsDownloaded: true,
+  }),
+  installPython: vi.fn().mockResolvedValue({ success: true }),
+  downloadPythonModel: vi.fn().mockResolvedValue({ success: true, model: 'base' }),
+  checkPythonDependencies: vi.fn().mockResolvedValue({ available: true, missing: [] }),
+  onPythonInstallProgress: vi.fn().mockReturnValue(() => {}),
+  onPythonModelProgress: vi.fn().mockReturnValue(() => {}),
   getAppInfo: vi.fn().mockResolvedValue({
     version: '1.0.0',
     name: 'WhisperDesk',

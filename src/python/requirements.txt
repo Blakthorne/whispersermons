@@ -1,0 +1,27 @@
+# Python dependencies for WhisperDesk sermon processing
+# These are installed on first run via the setup wizard
+
+# Core transcription
+openai-whisper>=20231117
+
+# Deep learning framework (required by whisper)
+torch>=2.0.0
+
+# Semantic analysis for paragraph segmentation and tag extraction
+sentence-transformers>=2.2.0
+transformers>=4.30.0
+
+# Keyword extraction for tags
+keybert>=0.8.0
+
+# Natural language processing
+nltk>=3.8.0
+
+# Audio metadata extraction
+mutagen>=1.47.0
+
+# HTTP requests (for optional online Bible API fallback)
+requests>=2.31.0
+
+# Numerical computing
+numpy>=1.24.0

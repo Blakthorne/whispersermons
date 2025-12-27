@@ -4,8 +4,10 @@ import type {
   TranscriptionSettings,
   OutputFormat,
   QueueItem,
+  SermonDocument,
 } from '../types';
 import type { Theme } from '../hooks';
+import type { PipelineProgress } from '../services/electronAPI';
 
 export interface ThemeContextValue {
   theme: Theme;
@@ -21,6 +23,9 @@ export interface HistoryContextValue {
   clearHistory: () => void;
   removeHistoryItem: (itemId: string) => void;
   selectHistoryItem: (item: HistoryItem) => void;
+  updateHistoryItem: (itemId: string, updates: Partial<HistoryItem>) => void;
+  /** ID of the currently selected history item (if viewing from history) */
+  currentHistoryItemId: string | null;
 }
 
 export interface TranscriptionStateContextValue {
@@ -33,6 +38,12 @@ export interface TranscriptionStateContextValue {
   copySuccess: boolean;
   queue: QueueItem[];
   selectedQueueItemId: string | null;
+  /** Sermon document from sermon processing pipeline */
+  sermonDocument: SermonDocument | null;
+  /** HTML content from WYSIWYG editor (for persistence) */
+  documentHtml: string | null;
+  /** Pipeline progress for sermon processing */
+  pipelineProgress: PipelineProgress | null;
 }
 
 export interface TranscriptionActionsContextValue {
@@ -47,6 +58,12 @@ export interface TranscriptionActionsContextValue {
   removeFromQueue: (id: string) => void;
   clearCompletedFromQueue: () => void;
   selectQueueItem: (id: string) => void;
+  /** Set sermon document from processing pipeline */
+  setSermonDocument: (doc: SermonDocument | null) => void;
+  /** Update HTML content from editor */
+  setDocumentHtml: (html: string | null) => void;
+  /** Save current editor edits to history */
+  saveEdits: () => void;
 }
 
 export interface TranscriptionContextValue

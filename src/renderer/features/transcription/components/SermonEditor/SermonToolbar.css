@@ -1,0 +1,137 @@
+/* Sermon Toolbar */
+.sermon-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--toolbar-bg);
+  border-bottom: 1px solid var(--border-color);
+  min-height: 44px;
+}
+
+.sermon-toolbar.loading {
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Toolbar Groups */
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Toolbar Buttons */
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.toolbar-btn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.toolbar-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.toolbar-btn.active {
+  background: var(--accent-bg);
+  color: var(--accent-color);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* SVG icon styling */
+.toolbar-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+
+/* Divider */
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+  margin: 0 6px;
+}
+
+/* CSS Custom Properties */
+:root {
+  --toolbar-bg: var(--background-secondary);
+  --hover-bg: rgba(0, 0, 0, 0.05);
+  --button-bg: var(--background-primary);
+  --button-hover-bg: var(--background-secondary);
+  --dropdown-bg: var(--background-primary);
+  --success-bg: rgba(34, 197, 94, 0.1);
+  --success-color: rgb(34, 197, 94);
+  --info-bg: rgba(59, 130, 246, 0.1);
+  --info-color: rgb(59, 130, 246);
+}
+
+[data-theme='dark'] {
+  --toolbar-bg: rgba(255, 255, 255, 0.03);
+  --hover-bg: rgba(255, 255, 255, 0.08);
+  --dropdown-bg: var(--background-secondary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sermon-toolbar {
+    padding: 6px 8px;
+    gap: 2px;
+  }
+
+  .toolbar-btn {
+    min-width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+
+  .toolbar-divider {
+    height: 20px;
+    margin: 0 4px;
+  }
+
+  .toolbar-stats {
+    display: none;
+  }
+
+  .toolbar-group.alignment {
+    display: none;
+  }
+
+  .toolbar-group.headings {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .toolbar-group.lists {
+    display: none;
+  }
+
+  .toolbar-group.history {
+    display: none;
+  }
+}

@@ -1,4 +1,4 @@
-import type { HistoryItem } from '../../../types';
+import type { HistoryItem, SermonDocument } from '../../../types';
 import {
   STORAGE_KEYS,
   getStorageItem,
@@ -45,7 +45,12 @@ export function createHistoryItem(
   model: string,
   language: string,
   duration: number,
-  fullText: string
+  fullText: string,
+  options?: {
+    isSermon?: boolean;
+    sermonDocument?: SermonDocument;
+    documentHtml?: string;
+  }
 ): Omit<HistoryItem, 'id'> {
   return {
     fileName,
@@ -56,5 +61,8 @@ export function createHistoryItem(
     duration,
     preview: fullText.substring(0, 100) + (fullText.length > 100 ? '...' : ''),
     fullText,
+    isSermon: options?.isSermon,
+    sermonDocument: options?.sermonDocument,
+    documentHtml: options?.documentHtml,
   };
 }

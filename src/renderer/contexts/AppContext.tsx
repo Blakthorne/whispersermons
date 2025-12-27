@@ -3,7 +3,7 @@ import { useTranscription, useBatchQueue, useQueueSelection } from '../features/
 import { useHistory } from '../features/history';
 import { useTheme, useCopyToClipboard, useElectronMenu } from '../hooks';
 import { selectAndProcessFiles } from '../utils';
-import type { HistoryItem, SelectedFile } from '../types';
+import type { HistoryItem, SelectedFile, SermonDocument, OutputFormat } from '../types';
 import {
   ThemeContext,
   HistoryContext,
@@ -32,6 +32,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     setShowHistory,
     toggleHistory,
     addHistoryItem,
+    updateHistoryItem,
     clearHistory,
     removeHistoryItem,
   } = useHistory();
@@ -51,10 +52,14 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
   } = useTranscription();
 
   const [selectedQueueItemId, setSelectedQueueItemId] = useState<string | null>(null);
+  const [sermonDocument, setSermonDocument] = useState<SermonDocument | null>(null);
+  const [documentHtml, setDocumentHtml] = useState<string | null>(null);
+  const [currentHistoryItemId, setCurrentHistoryItemId] = useState<string | null>(null);
 
   const {
     queue,
     isProcessing,
+    pipelineProgress,
     addFiles,
     removeFile,
     clearCompleted,
@@ -63,10 +68,23 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     getCompletedTranscription,
   } = useBatchQueue({
     settings,
-    onHistoryAdd: addHistoryItem,
-    onFirstComplete: (id, text) => {
+    onHistoryAdd: (item) => {
+      addHistoryItem(item);
+      // Track the ID of the newly created history item
+      setCurrentHistoryItemId(item.id);
+    },
+    onFirstComplete: (id, text, file, sermonDoc) => {
       setSelectedQueueItemId(id);
       setTranscription(text);
+      setSelectedFile(file);
+      // Set sermon document if available
+      if (sermonDoc) {
+        setSermonDocument(sermonDoc);
+        setDocumentHtml(null); // Reset HTML when new document arrives
+      } else {
+        setSermonDocument(null);
+        setDocumentHtml(null);
+      }
     },
   });
 
@@ -74,14 +92,59 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     (item: HistoryItem): void => {
       setTranscription(item.fullText);
       setSelectedFile({ name: item.fileName, path: item.filePath });
+      // Restore sermon document and HTML from history
+      if (item.isSermon && item.sermonDocument) {
+        setSermonDocument(item.sermonDocument);
+        setDocumentHtml(item.documentHtml || null);
+      } else {
+        setSermonDocument(null);
+        setDocumentHtml(null);
+      }
+      // Track which history item is currently being viewed
+      setCurrentHistoryItemId(item.id);
       setShowHistory(false);
     },
     [setTranscription, setSelectedFile, setShowHistory]
   );
 
+  const saveEdits = useCallback((): void => {
+    if (currentHistoryItemId && documentHtml) {
+      updateHistoryItem(currentHistoryItemId, { documentHtml });
+    }
+  }, [currentHistoryItemId, documentHtml, updateHistoryItem]);
+
   const onCopy = useCallback(async (): Promise<void> => {
     await handleCopy(copyToClipboard);
   }, [handleCopy, copyToClipboard]);
+
+  // Wrap handleSave to include sermon-specific data
+  const wrappedHandleSave = useCallback(
+    async (format?: OutputFormat): Promise<void> => {
+      // For sermon documents with HTML, we need to pass extra data
+      // The handleSave function from useTranscription is basic
+      // We need to call saveFile directly with sermon data
+      if (sermonDocument && documentHtml) {
+        const { saveFile } = await import('../services/electronAPI');
+        const fileName = selectedFile?.name?.replace(/\.[^/.]+$/, '') || 'sermon';
+
+        const result = await saveFile({
+          defaultName: `${fileName}.${format || 'txt'}`,
+          content: transcription, // Fallback plain text
+          format: format || 'txt',
+          html: documentHtml,
+          isSermon: true,
+        });
+
+        if (result?.error) {
+          console.error('Failed to save:', result.error);
+        }
+      } else {
+        // Standard save for non-sermon content
+        await handleSave(format);
+      }
+    },
+    [sermonDocument, documentHtml, selectedFile, transcription, handleSave]
+  );
 
   const handleFilesSelect = useCallback(
     (files: SelectedFile[]): void => {
@@ -112,6 +175,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
         setSelectedQueueItemId(null);
         setTranscription('');
         setSelectedFile(null);
+        setSermonDocument(null);
+        setDocumentHtml(null);
       }
     },
     [removeFile, selectedQueueItemId, setTranscription, setSelectedFile]
@@ -122,6 +187,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     setSelectedQueueItemId(null);
     setTranscription('');
     setSelectedFile(null);
+    setSermonDocument(null);
+    setDocumentHtml(null);
   }, [clearCompleted, setTranscription, setSelectedFile]);
 
   const { selectQueueItem } = useQueueSelection(
@@ -179,6 +246,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       clearHistory,
       removeHistoryItem,
       selectHistoryItem,
+      updateHistoryItem,
+      currentHistoryItemId,
     }),
     [
       history,
@@ -188,6 +257,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       clearHistory,
       removeHistoryItem,
       selectHistoryItem,
+      updateHistoryItem,
+      currentHistoryItemId,
     ]
   );
 
@@ -202,6 +273,9 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       copySuccess,
       queue,
       selectedQueueItemId,
+      sermonDocument,
+      documentHtml,
+      pipelineProgress,
     }),
     [
       selectedFile,
@@ -213,6 +287,9 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       copySuccess,
       queue,
       selectedQueueItemId,
+      sermonDocument,
+      documentHtml,
+      pipelineProgress,
     ]
   );
 
@@ -223,12 +300,15 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       setModelDownloaded,
       handleTranscribe,
       handleCancel,
-      handleSave,
+      handleSave: wrappedHandleSave,
       handleCopy: onCopy,
       handleFilesSelect,
       removeFromQueue,
       clearCompletedFromQueue,
       selectQueueItem,
+      setSermonDocument,
+      setDocumentHtml,
+      saveEdits,
     }),
     [
       setSelectedFile,
@@ -236,12 +316,13 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       setModelDownloaded,
       handleTranscribe,
       handleCancel,
-      handleSave,
+      wrappedHandleSave,
       onCopy,
       handleFilesSelect,
       removeFromQueue,
       clearCompletedFromQueue,
       selectQueueItem,
+      saveEdits,
     ]
   );
 

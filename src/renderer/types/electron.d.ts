@@ -12,6 +12,8 @@ import type {
   MemoryUsage,
   Unsubscribe,
   UpdateStatus,
+  PipelineStage,
+  SermonDocument,
 } from './index';
 
 export interface ModelsListResponse {
@@ -31,6 +33,36 @@ export interface WhisperCheckResult {
   error?: string;
 }
 
+// Python environment types
+export interface PythonStatus {
+  installed: boolean;
+  packagesInstalled: boolean;
+  modelsDownloaded: boolean;
+  error?: string;
+}
+
+export interface PythonInstallProgress {
+  stage: 'python' | 'packages' | 'models';
+  progress: number;
+  message: string;
+}
+
+export interface PipelineProgress {
+  currentStage: PipelineStage;
+  overallProgress: number;
+  stageProgress: number;
+  message: string;
+}
+
+export interface ExtendedTranscriptionOptions extends TranscriptionOptions {
+  processAsSermon?: boolean;
+}
+
+export interface SermonTranscriptionResult extends TranscriptionResult {
+  sermonDocument?: SermonDocument;
+  documentHtml?: string;
+}
+
 export interface ElectronAPI {
   openFile: () => Promise<string | null>;
   openMultipleFiles: () => Promise<string[] | null>;
@@ -46,6 +78,26 @@ export interface ElectronAPI {
   startTranscription: (options: TranscriptionOptions) => Promise<TranscriptionResult>;
   cancelTranscription: () => Promise<CancelResult>;
   onTranscriptionProgress: (callback: (data: TranscriptionProgress) => void) => Unsubscribe;
+
+  // Python-based transcription with optional sermon processing
+  startPythonTranscription: (
+    options: ExtendedTranscriptionOptions
+  ) => Promise<SermonTranscriptionResult>;
+  cancelPythonTranscription: () => Promise<CancelResult>;
+  onPipelineProgress: (callback: (data: PipelineProgress) => void) => Unsubscribe;
+
+  // Python environment management
+  checkPythonStatus: () => Promise<PythonStatus>;
+  installPython: () => Promise<{ success: boolean; error?: string }>;
+  downloadPythonModel: (
+    modelName: string
+  ) => Promise<{ success: boolean; model: string; error?: string }>;
+  checkPythonDependencies: () => Promise<{ available: boolean; missing: string[] }>;
+  onPythonInstallProgress: (callback: (data: PythonInstallProgress) => void) => Unsubscribe;
+  onPythonModelProgress: (
+    callback: (data: { progress: number; message: string }) => void
+  ) => Unsubscribe;
+
   getAppInfo: () => Promise<AppInfo>;
   getMemoryUsage: () => Promise<MemoryUsage>;
   trackEvent: (

@@ -13,6 +13,7 @@ describe('useBatchQueue', () => {
   const mockSettings: TranscriptionSettings = {
     model: 'base',
     language: 'en',
+    processAsSermon: false,
   };
 
   const mockOnHistoryAdd = vi.fn();
@@ -213,7 +214,9 @@ describe('useBatchQueue', () => {
       expect(mockOnFirstComplete).toHaveBeenCalledTimes(1);
       expect(mockOnFirstComplete).toHaveBeenCalledWith(
         result.current.queue[0]!.id,
-        'Transcribed text'
+        'Transcribed text',
+        result.current.queue[0]!.file,
+        undefined
       );
     });
 

@@ -5,25 +5,31 @@ import type {
   QueueItem,
   QueueItemStatus,
   HistoryItem,
+  SermonDocument,
 } from '../../../types';
 import {
   startTranscription,
   cancelTranscription,
   onTranscriptionProgress,
+  startPythonTranscription,
+  cancelPythonTranscription,
+  onPipelineProgress,
 } from '../../../services/electronAPI';
+import type { PipelineProgress, SermonTranscriptionResult } from '../../../services/electronAPI';
 import { logger } from '../../../services/logger';
 import { sanitizePath } from '../../../../shared/utils';
 
 interface UseBatchQueueOptions {
   settings: TranscriptionSettings;
   onHistoryAdd?: (item: HistoryItem) => void;
-  onFirstComplete?: (id: string, text: string) => void;
+  onFirstComplete?: (id: string, text: string, file: SelectedFile, sermonDocument?: SermonDocument) => void;
 }
 
 interface UseBatchQueueReturn {
   queue: QueueItem[];
   isProcessing: boolean;
   currentItemId: string | null;
+  pipelineProgress: PipelineProgress | null;
 
   addFiles: (files: SelectedFile[]) => void;
   removeFile: (id: string) => void;
@@ -46,16 +52,22 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentItemId, setCurrentItemId] = useState<string | null>(null);
+  const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null);
 
   const isCancelledRef = useRef(false);
   const hasCalledFirstCompleteRef = useRef(false);
   const progressUnsubscribeRef = useRef<(() => void) | null>(null);
+  const pipelineProgressUnsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     return () => {
       if (progressUnsubscribeRef.current) {
         progressUnsubscribeRef.current();
         progressUnsubscribeRef.current = null;
+      }
+      if (pipelineProgressUnsubscribeRef.current) {
+        pipelineProgressUnsubscribeRef.current();
+        pipelineProgressUnsubscribeRef.current = null;
       }
     };
   }, []);
@@ -100,6 +112,7 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
   const processItem = useCallback(
     async (item: QueueItem): Promise<QueueItem> => {
       const startTime = Date.now();
+      const usePythonTranscription = settings.processAsSermon === true;
 
       setQueue((prev) =>
         prev.map((q) =>
@@ -113,24 +126,51 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
         progressUnsubscribeRef.current = null;
       }
 
+      if (pipelineProgressUnsubscribeRef.current) {
+        pipelineProgressUnsubscribeRef.current();
+        pipelineProgressUnsubscribeRef.current = null;
+      }
+
       progressUnsubscribeRef.current = onTranscriptionProgress((progress) => {
         setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, progress } : q)));
       });
+
+      // Subscribe to pipeline progress for sermon processing
+      if (usePythonTranscription) {
+        pipelineProgressUnsubscribeRef.current = onPipelineProgress((progress) => {
+          setPipelineProgress(progress);
+        });
+      }
 
       logger.info('Processing batch item', {
         id: item.id,
         file: sanitizePath(item.file.path),
         model: settings.model,
         language: settings.language,
+        sermonMode: usePythonTranscription,
       });
 
       try {
-        const result = await startTranscription({
-          filePath: item.file.path,
-          model: settings.model,
-          language: settings.language,
-          outputFormat: 'vtt',
-        });
+        let result: SermonTranscriptionResult;
+
+        if (usePythonTranscription) {
+          // Use Python transcription with optional sermon processing
+          result = await startPythonTranscription({
+            filePath: item.file.path,
+            model: settings.model,
+            language: settings.language,
+            outputFormat: 'vtt',
+            processAsSermon: true,
+          });
+        } else {
+          // Use original whisper.cpp transcription
+          result = await startTranscription({
+            filePath: item.file.path,
+            model: settings.model,
+            language: settings.language,
+            outputFormat: 'vtt',
+          });
+        }
 
         const endTime = Date.now();
 
@@ -186,13 +226,17 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
             duration: Math.round((endTime - startTime) / 1000),
             preview: result.text.substring(0, 100) + (result.text.length > 100 ? '...' : ''),
             fullText: result.text,
+            // Sermon-specific fields
+            isSermon: settings.processAsSermon === true,
+            sermonDocument: result.sermonDocument,
+            documentHtml: result.documentHtml,
           };
           onHistoryAdd(historyItem);
         }
 
         if (!hasCalledFirstCompleteRef.current && onFirstComplete && result.text) {
           hasCalledFirstCompleteRef.current = true;
-          onFirstComplete(item.id, result.text);
+          onFirstComplete(item.id, result.text, item.file, result.sermonDocument);
         }
 
         return {
@@ -215,6 +259,10 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
         if (progressUnsubscribeRef.current) {
           progressUnsubscribeRef.current();
           progressUnsubscribeRef.current = null;
+        }
+        if (pipelineProgressUnsubscribeRef.current) {
+          pipelineProgressUnsubscribeRef.current();
+          pipelineProgressUnsubscribeRef.current = null;
         }
       }
     },
@@ -260,10 +308,14 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
       const resetItem = { ...item, status: 'pending' as QueueItemStatus, error: undefined };
       const processedItem = await processItem(resetItem);
       setQueue((prev) => prev.map((q) => (q.id === processedItem.id ? processedItem : q)));
+      
+      // Clear pipeline progress after each item completes
+      setPipelineProgress(null);
     }
 
     setIsProcessing(false);
     setCurrentItemId(null);
+    setPipelineProgress(null);
     logger.info('Batch processing complete');
   }, [isProcessing, queue, processItem]);
 
@@ -271,10 +323,13 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
     if (!isProcessing) return;
 
     isCancelledRef.current = true;
-    await cancelTranscription();
+
+    // Cancel both types of transcription (one will be a no-op)
+    await Promise.all([cancelTranscription(), cancelPythonTranscription()]);
 
     setIsProcessing(false);
     setCurrentItemId(null);
+    setPipelineProgress(null);
 
     setQueue((prev) =>
       prev.map((q) =>
@@ -287,6 +342,11 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
     if (progressUnsubscribeRef.current) {
       progressUnsubscribeRef.current();
       progressUnsubscribeRef.current = null;
+    }
+
+    if (pipelineProgressUnsubscribeRef.current) {
+      pipelineProgressUnsubscribeRef.current();
+      pipelineProgressUnsubscribeRef.current = null;
     }
 
     logger.warn('Batch processing cancelled by user');
@@ -307,6 +367,7 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
     queue,
     isProcessing,
     currentItemId,
+    pipelineProgress,
 
     addFiles,
     removeFile,

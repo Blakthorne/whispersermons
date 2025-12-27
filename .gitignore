@@ -1,3 +1,11 @@
+# Python
+python-env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
 # Dependencies
 node_modules/
 
@@ -21,6 +29,24 @@ models/*.bin
 
 # Whisper models cache (large files)
 *.pt
+
+# Model directories (large files) - ignore everything in these directories
+models/whisper/**
+models/huggingface/**
+
+# But keep the directory structure with .gitkeep files
+!models/whisper/.gitkeep
+!models/huggingface/.gitkeep
+
+# Other common large model file formats
+*.bin
+*.onnx
+*.safetensors
+*.msgpack
+*.h5
+*.ckpt
+*.pth
+*.model
 
 # Environment variables
 .env

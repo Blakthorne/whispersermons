@@ -1,150 +1,143 @@
+/**
+ * Whisper Service - Model Management and Utilities
+ *
+ * This module provides model management for Python Whisper.
+ * Transcription is handled by python-whisper.ts.
+ */
+
 import { spawn } from 'child_process';
-import type { ChildProcess } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import https from 'https';
-import { app } from 'electron';
-import os from 'os';
-import crypto from 'crypto';
-import type {
-  TranscriptionOptions,
-  TranscriptionResult,
-  TranscriptionProgress,
-  ModelDownloadProgress,
-  ModelInfo,
-  GpuInfo,
-  QualityLevel,
-} from '../../shared/types';
-import { sanitizePath } from '../../shared/utils';
+import type { ModelDownloadProgress, ModelInfo, GpuInfo, QualityLevel } from '../../shared/types';
 import { detectGpuStatus } from './gpu-detector';
+import { getPythonPath, getWhisperCacheDir } from './python-installer';
 
+// ============================================================================
+// MODEL CONFIGURATION
+// ============================================================================
+
+/**
+ * Python Whisper model information.
+ * Models are automatically downloaded to the cache directory when first used.
+ */
 interface WhisperModelInfo {
+  /** Display size for UI */
   size: string;
-  url: string;
+  /** Quality rating 1-5 */
   quality: QualityLevel;
+  /** Relative speed compared to large model */
   speed: string;
+  /** Estimated VRAM requirement */
+  vram: string;
 }
 
+/**
+ * Available Python Whisper models with their characteristics.
+ * These match OpenAI's Whisper model names.
+ */
 export const MODELS: Record<string, WhisperModelInfo> = {
   tiny: {
-    size: '75 MB',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin',
+    size: '~75 MB',
     quality: 1,
     speed: '~10x',
+    vram: '~1 GB',
   },
   'tiny.en': {
-    size: '75 MB',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin',
+    size: '~75 MB',
     quality: 1,
     speed: '~10x',
+    vram: '~1 GB',
   },
   base: {
-    size: '142 MB',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
+    size: '~140 MB',
     quality: 2,
     speed: '~7x',
+    vram: '~1 GB',
   },
   'base.en': {
-    size: '142 MB',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin',
+    size: '~140 MB',
     quality: 2,
     speed: '~7x',
+    vram: '~1 GB',
   },
   small: {
-    size: '466 MB',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
+    size: '~460 MB',
     quality: 3,
     speed: '~4x',
+    vram: '~2 GB',
   },
   'small.en': {
-    size: '466 MB',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin',
+    size: '~460 MB',
     quality: 3,
     speed: '~4x',
+    vram: '~2 GB',
   },
   medium: {
-    size: '1.5 GB',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin',
+    size: '~1.5 GB',
     quality: 4,
     speed: '~2x',
+    vram: '~5 GB',
   },
   'medium.en': {
-    size: '1.5 GB',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin',
+    size: '~1.5 GB',
     quality: 4,
     speed: '~2x',
+    vram: '~5 GB',
   },
   'large-v3': {
-    size: '3.1 GB',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin',
+    size: '~3.1 GB',
     quality: 5,
     speed: '~1x',
+    vram: '~10 GB',
   },
   'large-v3-turbo': {
-    size: '1.6 GB',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin',
+    size: '~1.6 GB',
     quality: 5,
     speed: '~2x',
+    vram: '~6 GB',
   },
 };
 
+/** Model name aliases for convenience */
 const MODEL_ALIASES: Record<string, string> = {
   large: 'large-v3',
   turbo: 'large-v3-turbo',
 };
 
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+// ============================================================================
+// MODEL MANAGEMENT
+// ============================================================================
 
-export function getWhisperBinaryPath(): string {
-  if (isDev) {
-    return path.join(process.cwd(), 'bin', 'whisper-cli');
-  } else {
-    const unpackedPath = path.join(
-      process.resourcesPath,
-      'app.asar.unpacked',
-      'bin',
-      'whisper-cli'
-    );
-    if (fs.existsSync(unpackedPath)) {
-      return unpackedPath;
-    }
-    return path.join(process.resourcesPath, 'bin', 'whisper-cli');
-  }
-}
-
+/**
+ * Get the directory where Whisper models are cached.
+ * Uses the same location as python-installer.
+ */
 export function getModelsDir(): string {
-  if (isDev) {
-    const devModelsDir = path.join(process.cwd(), 'models');
-    if (!fs.existsSync(devModelsDir)) {
-      fs.mkdirSync(devModelsDir, { recursive: true });
-    }
-    return devModelsDir;
-  }
-
-  const userDataPath = app.getPath('userData');
-  const modelsDir = path.join(userDataPath, 'models');
-
-  if (!fs.existsSync(modelsDir)) {
-    fs.mkdirSync(modelsDir, { recursive: true });
-  }
-
-  return modelsDir;
+  return getWhisperCacheDir();
 }
 
+/**
+ * Get the path to a specific model file.
+ * Python Whisper caches models in a 'whisper' subdirectory as .pt files.
+ */
 export function getModelPath(modelName: string): string {
-  if (!MODELS[modelName] && !MODEL_ALIASES[modelName]) {
-    throw new Error(`Invalid model name: ${modelName}`);
-  }
-
-  if (modelName.includes('/') || modelName.includes('\\') || modelName.includes('..')) {
-    throw new Error(`Invalid model name: ${modelName}`);
-  }
-
   const actualModel = MODEL_ALIASES[modelName] || modelName;
+
+  // Python Whisper stores models in: XDG_CACHE_HOME/whisper/modelname.pt
   const modelsDir = getModelsDir();
-  return path.join(modelsDir, `ggml-${actualModel}.bin`);
+  const whisperDir = path.join(modelsDir, 'whisper');
+
+  // Handle turbo model naming
+  if (actualModel === 'large-v3-turbo') {
+    return path.join(whisperDir, 'large-v3-turbo.pt');
+  }
+
+  return path.join(whisperDir, `${actualModel}.pt`);
 }
 
+/**
+ * Check if a model has been downloaded.
+ */
 export function isModelDownloaded(modelName: string): boolean {
   try {
     const modelPath = getModelPath(modelName);
@@ -154,6 +147,9 @@ export function isModelDownloaded(modelName: string): boolean {
   }
 }
 
+/**
+ * Format file size for display.
+ */
 function formatFileSize(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -161,6 +157,9 @@ function formatFileSize(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
+/**
+ * Get actual file size of a downloaded model.
+ */
 function getActualModelSize(modelName: string): string | null {
   try {
     const modelPath = getModelPath(modelName);
@@ -174,10 +173,15 @@ function getActualModelSize(modelName: string): string | null {
   }
 }
 
+/**
+ * List all available models with their info.
+ * Shows which models are downloaded and their actual sizes.
+ */
 export function listModels(): ModelInfo[] {
   const result: ModelInfo[] = [];
 
   for (const [name, info] of Object.entries(MODELS)) {
+    // Skip English-only variants in the main list for cleaner UI
     if (name.includes('.en')) continue;
 
     const downloaded = isModelDownloaded(name);
@@ -189,128 +193,140 @@ export function listModels(): ModelInfo[] {
       quality: info.quality,
       speed: info.speed,
       downloaded,
-      vram: 'N/A (CPU/Metal)', // whisper.cpp uses different memory model
+      vram: info.vram,
     });
   }
 
+  // Sort by quality
   result.sort((a, b) => a.quality - b.quality);
 
   return result;
 }
 
-export function downloadModel(
+/**
+ * Download a Whisper model using Python.
+ * This triggers the Python Whisper model download via the Python bridge.
+ */
+export async function downloadModel(
   modelName: string,
   onProgress?: (progress: ModelDownloadProgress) => void
 ): Promise<{ success: boolean; model: string; path: string }> {
+  const actualModel = MODEL_ALIASES[modelName] || modelName;
+  const modelInfo = MODELS[actualModel];
+
+  if (!modelInfo) {
+    throw new Error(`Unknown model: ${modelName}`);
+  }
+
+  const pythonPath = getPythonPath();
+  if (!fs.existsSync(pythonPath)) {
+    throw new Error('Python environment not installed. Please run setup first.');
+  }
+
+  const modelsDir = getModelsDir();
+  if (!fs.existsSync(modelsDir)) {
+    fs.mkdirSync(modelsDir, { recursive: true });
+  }
+
+  // Set up environment for Python Whisper to use our cache directory
+  const env = {
+    ...process.env,
+    PYTHONUNBUFFERED: '1',
+    XDG_CACHE_HOME: modelsDir,
+    WHISPER_CACHE_DIR: modelsDir,
+  };
+
   return new Promise((resolve, reject) => {
-    const actualModel = MODEL_ALIASES[modelName] || modelName;
-    const modelInfo = MODELS[actualModel];
+    onProgress?.({
+      status: 'downloading',
+      model: actualModel,
+      percent: 0,
+      downloaded: '0 MB',
+      total: modelInfo.size,
+      remainingTime: '',
+    });
 
-    if (!modelInfo) {
-      reject(new Error(`Unknown model: ${modelName}`));
-      return;
-    }
+    // Download model using Python
+    const proc = spawn(
+      pythonPath,
+      ['-c', `import whisper; whisper.load_model('${actualModel}'); print('Model downloaded successfully')`],
+      { env, stdio: ['pipe', 'pipe', 'pipe'] }
+    );
 
-    const modelPath = getModelPath(actualModel);
-    const tempPath = modelPath + '.tmp';
+    let stdout = '';
+    let stderr = '';
+    let lastProgress = 0;
 
-    // Create write stream
-    const file = fs.createWriteStream(tempPath);
+    proc.stdout.on('data', (data) => {
+      const text = data.toString();
+      stdout += text;
 
-    const downloadWithRedirects = (url: string, redirectCount = 0) => {
-      if (redirectCount > 5) {
-        reject(new Error('Too many redirects'));
-        return;
+      // Try to parse download progress from Whisper's output
+      const percentMatch = text.match(/(\d+(?:\.\d+)?)\s*%/);
+      if (percentMatch && percentMatch[1]) {
+        const percent = Math.min(100, parseFloat(percentMatch[1]));
+        if (percent > lastProgress) {
+          lastProgress = percent;
+          onProgress?.({
+            status: 'downloading',
+            model: actualModel,
+            percent: Math.round(percent),
+            downloaded: '',
+            total: modelInfo.size,
+            remainingTime: '',
+          });
+        }
       }
+    });
 
-      https
-        .get(url, (response) => {
-          // Handle redirects
-          if (
-            response.statusCode &&
-            response.statusCode >= 300 &&
-            response.statusCode < 400 &&
-            response.headers.location
-          ) {
-            downloadWithRedirects(response.headers.location, redirectCount + 1);
-            return;
-          }
+    proc.stderr.on('data', (data) => {
+      const text = data.toString();
+      stderr += text;
 
-          if (response.statusCode !== 200) {
-            reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
-            return;
-          }
-
-          const totalSize = parseInt(response.headers['content-length'] || '0', 10);
-          let downloadedSize = 0;
-          const startTime = Date.now();
-          let lastUpdateTime = 0;
-          const updateThrottle = 1000;
-
-          response.on('data', (chunk) => {
-            downloadedSize += chunk.length;
-            file.write(chunk);
-
-            if (onProgress && totalSize) {
-              const now = Date.now();
-              if (lastUpdateTime === 0 || now - lastUpdateTime >= updateThrottle) {
-                lastUpdateTime = now;
-                const percent = Math.round((downloadedSize / totalSize) * 100);
-
-                const elapsedTime = (lastUpdateTime - startTime) / 1000;
-                const speed = downloadedSize / elapsedTime;
-                const remainingBytes = totalSize - downloadedSize;
-                const remainingSeconds = remainingBytes / speed;
-
-                let remainingTime = '';
-                if (speed > 0 && Number.isFinite(remainingSeconds) && remainingSeconds > 0) {
-                  if (remainingSeconds < 60) {
-                    remainingTime = `${Math.round(remainingSeconds)}s`;
-                  } else {
-                    remainingTime = `${Math.round(remainingSeconds / 60)}m`;
-                  }
-                } else {
-                  remainingTime = '';
-                }
-
-                onProgress({
-                  status: 'downloading',
-                  model: actualModel,
-                  percent,
-                  downloaded: formatFileSize(downloadedSize),
-                  total: formatFileSize(totalSize),
-                  remainingTime,
-                });
-              }
-            }
+      // Progress info sometimes comes on stderr
+      const percentMatch = text.match(/(\d+(?:\.\d+)?)\s*%/);
+      if (percentMatch && percentMatch[1]) {
+        const percent = Math.min(100, parseFloat(percentMatch[1]));
+        if (percent > lastProgress) {
+          lastProgress = percent;
+          onProgress?.({
+            status: 'downloading',
+            model: actualModel,
+            percent: Math.round(percent),
+            downloaded: '',
+            total: modelInfo.size,
+            remainingTime: '',
           });
+        }
+      }
+    });
 
-          response.on('end', () => {
-            file.end();
-            fs.renameSync(tempPath, modelPath);
-            resolve({ success: true, model: actualModel, path: modelPath });
-          });
-
-          response.on('error', (err) => {
-            file.end();
-            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-            reject(err);
-          });
-        })
-        .on('error', (err) => {
-          reject(err);
+    proc.on('close', (code) => {
+      if (code === 0) {
+        const modelPath = getModelPath(actualModel);
+        resolve({
+          success: true,
+          model: actualModel,
+          path: modelPath,
         });
-    };
+      } else {
+        reject(new Error(`Model download failed: ${stderr || 'Unknown error'}`));
+      }
+    });
 
-    downloadWithRedirects(modelInfo.url);
+    proc.on('error', reject);
   });
 }
 
+/**
+ * Delete a downloaded model.
+ */
 export function deleteModel(modelName: string): { success: boolean; error?: string } {
   try {
     const modelPath = getModelPath(modelName);
     const modelsDir = getModelsDir();
 
+    // Security check: ensure path is within models directory
     const resolvedPath = path.resolve(modelPath);
     const resolvedModelsDir = path.resolve(modelsDir);
 
@@ -328,6 +344,11 @@ export function deleteModel(modelName: string): { success: boolean; error?: stri
   }
 }
 
+// ============================================================================
+// SYSTEM CHECKS
+// ============================================================================
+
+/** FFmpeg search paths for macOS */
 const FFMPEG_PATHS = [
   '/opt/homebrew/bin/ffmpeg',
   '/usr/local/bin/ffmpeg',
@@ -335,6 +356,10 @@ const FFMPEG_PATHS = [
   'ffmpeg',
 ];
 
+/**
+ * Check if FFmpeg is installed and available.
+ * Required for audio conversion before transcription.
+ */
 export async function checkFFmpeg(): Promise<boolean> {
   for (const p of FFMPEG_PATHS) {
     try {
@@ -368,257 +393,9 @@ export async function checkFFmpeg(): Promise<boolean> {
   return false;
 }
 
+/**
+ * Check GPU availability for hardware acceleration.
+ */
 export function checkGpuStatus(): GpuInfo {
   return detectGpuStatus();
-}
-
-function convertToWav(inputPath: string, outputPath: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let ffmpegPath = 'ffmpeg';
-    for (const p of FFMPEG_PATHS) {
-      if (p === 'ffmpeg' || fs.existsSync(p)) {
-        ffmpegPath = p;
-        break;
-      }
-    }
-
-    const args = [
-      '-i',
-      inputPath,
-      '-ar',
-      '16000', // 16kHz sample rate (required by Whisper)
-      '-ac',
-      '1', // Mono
-      '-c:a',
-      'pcm_s16le', // 16-bit PCM
-      '-y', // Overwrite output
-      outputPath,
-    ];
-
-    const proc = spawn(ffmpegPath, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stderr = '';
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve(outputPath);
-      } else {
-        reject(new Error(`FFmpeg conversion failed: ${stderr}`));
-      }
-    });
-
-    proc.on('error', (_err) => {
-      reject(new Error(`FFmpeg not found. Please install: brew install ffmpeg`));
-    });
-  });
-}
-
-export function transcribe(
-  options: TranscriptionOptions,
-  onProgress?: (progress: TranscriptionProgress) => void
-): Promise<TranscriptionResult> & { cancel?: () => void } {
-  const { filePath, model, language, outputFormat } = options;
-  let proc: ChildProcess | null = null;
-  let cancelled = false;
-
-  const promise = new Promise<TranscriptionResult>((resolve, reject) => {
-    const run = async () => {
-      const whisperPath = getWhisperBinaryPath();
-
-      if (!fs.existsSync(whisperPath)) {
-        reject(new Error('whisper.cpp binary not found. Please run: npm run setup:whisper'));
-        return;
-      }
-
-      const actualModel = MODEL_ALIASES[model] || model || 'base';
-      let modelPath;
-      try {
-        modelPath = getModelPath(actualModel);
-      } catch (err) {
-        reject(new Error(`Invalid model: ${err instanceof Error ? err.message : String(err)}`));
-        return;
-      }
-
-      if (!fs.existsSync(modelPath)) {
-        reject(new Error(`Model '${actualModel}' not downloaded. Please download it first.`));
-        return;
-      }
-
-      if (!fs.existsSync(filePath)) {
-        reject(new Error(`Input file not found: ${filePath}`));
-        return;
-      }
-
-      onProgress?.({ percent: 5, status: 'Preparing audio...' });
-
-      const ext = path.extname(filePath).toLowerCase();
-      let audioPath = filePath;
-      let tempWavPath: string | null = null;
-
-      if (ext !== '.wav') {
-        tempWavPath = path.join(app.getPath('temp'), `whisperdesk_${crypto.randomUUID()}.wav`);
-        try {
-          audioPath = await convertToWav(filePath, tempWavPath);
-          onProgress?.({ percent: 15, status: 'Audio converted. Starting transcription...' });
-        } catch (err) {
-          try {
-            if (fs.existsSync(tempWavPath)) fs.unlinkSync(tempWavPath);
-          } catch (e) {
-            console.error('Failed to delete temp wav file on conversion error:', e);
-          }
-          reject(err);
-          return;
-        }
-      }
-
-      onProgress?.({ percent: 20, status: 'Transcribing...' });
-
-      const outputBase = path.join(app.getPath('temp'), `whisper_output_${crypto.randomUUID()}`);
-
-      const cleanupFiles = () => {
-        try {
-          if (tempWavPath && fs.existsSync(tempWavPath)) {
-            fs.unlinkSync(tempWavPath);
-          }
-        } catch (e) {
-          console.error('Failed to delete temp wav file:', e);
-        }
-
-        try {
-          const txtPath = outputBase + '.txt';
-          const vttPath = outputBase + '.vtt';
-          if (fs.existsSync(txtPath)) fs.unlinkSync(txtPath);
-          if (fs.existsSync(vttPath)) fs.unlinkSync(vttPath);
-        } catch (e) {
-          console.error('Failed to delete output files:', e);
-        }
-      };
-
-      const args = [
-        '-m',
-        modelPath,
-        '-f',
-        audioPath,
-        '--output-txt', // Output plain text
-        '--output-vtt', // Output VTT subtitles
-        '--no-timestamps', // Don't print timestamps in main output (we use VTT)
-        '-pp', // Print progress
-        '-of',
-        outputBase,
-      ];
-
-      // Add language if specified
-      if (language && language !== 'auto') {
-        args.push('-l', language);
-      }
-
-      const cpuCount = os.cpus().length;
-      args.push('-t', String(Math.min(cpuCount, 8)));
-
-      const child = spawn(whisperPath, args);
-      proc = child;
-
-      if (!child.stdout || !child.stderr) {
-        cleanupFiles();
-        reject(new Error('Failed to spawn whisper process'));
-        return;
-      }
-
-      let stdout = '';
-      let stderr = '';
-
-      child.stdout.on('data', (data: Buffer) => {
-        stdout += data.toString();
-      });
-
-      child.stderr.on('data', (data: Buffer) => {
-        const message = data.toString();
-        stderr += message;
-
-        const progressMatch = message.match(/progress\s*=\s*(\d+)%/);
-        if (progressMatch && progressMatch[1]) {
-          const percent = Math.min(100, parseInt(progressMatch[1], 10));
-          const scaledPercent = 20 + Math.round((percent / 100) * 70);
-          onProgress?.({ percent: scaledPercent, status: `Transcribing... ${percent}%` });
-        }
-      });
-
-      child.on('close', (code: number) => {
-        if (cancelled) {
-          cleanupFiles();
-          resolve({ success: true, cancelled: true, text: '' });
-          return;
-        }
-
-        if (code === 0) {
-          const txtPath = outputBase + '.txt';
-          const vttPath = outputBase + '.vtt';
-
-          let text = stdout.trim();
-
-          if (fs.existsSync(txtPath)) {
-            if (!text) {
-              text = fs.readFileSync(txtPath, 'utf-8').trim();
-            }
-          }
-
-          let vtt: string | null = null;
-          if (fs.existsSync(vttPath)) {
-            vtt = fs.readFileSync(vttPath, 'utf-8');
-          }
-
-          // Clean up files after reading
-          cleanupFiles();
-
-          if (!text && !vtt) {
-            console.error('Transcription failed: No output generated.', {
-              txtPath: sanitizePath(txtPath),
-              vttPath: sanitizePath(vttPath),
-              stdoutLength: stdout.length,
-            });
-            reject(
-              new Error(
-                'Transcription produced no output. The audio file might be empty, silent, or contain no valid audio stream.'
-              )
-            );
-            return;
-          }
-
-          onProgress?.({ percent: 100, status: 'Complete!' });
-
-          // Return VTT format if requested, otherwise text
-          resolve({
-            success: true,
-            text: outputFormat === 'vtt' && vtt ? vtt : text,
-          });
-        } else {
-          cleanupFiles();
-          console.error('Transcription process exited with code', code);
-          console.error('Stderr:', stderr);
-          reject(new Error(stderr || 'Transcription failed'));
-        }
-      });
-
-      child.on('error', (err: Error) => {
-        console.error('Failed to spawn whisper process:', err);
-        cleanupFiles();
-        reject(err);
-      });
-    };
-    run();
-  }) as Promise<TranscriptionResult> & { cancel?: () => void };
-
-  promise.cancel = () => {
-    if (proc) {
-      cancelled = true;
-      proc.kill();
-    }
-  };
-
-  return promise;
 }

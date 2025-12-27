@@ -5,7 +5,36 @@ import type {
   ModelDownloadProgress,
   TranscriptionProgress,
   UpdateStatus,
+  PipelineStage,
 } from '../shared/types';
+
+// Extended options for Python transcription with sermon processing
+interface ExtendedTranscriptionOptions extends TranscriptionOptions {
+  processAsSermon?: boolean;
+}
+
+// Python environment status
+interface PythonStatus {
+  installed: boolean;
+  packagesInstalled: boolean;
+  modelsDownloaded: boolean;
+  error?: string;
+}
+
+// Python installation progress
+interface PythonInstallProgress {
+  stage: 'python' | 'packages' | 'models';
+  progress: number;
+  message: string;
+}
+
+// Pipeline progress for sermon processing
+interface PipelineProgress {
+  currentStage: PipelineStage;
+  overallProgress: number;
+  stageProgress: number;
+  message: string;
+}
 
 contextBridge.exposeInMainWorld('electronAPI', {
   openFile: () => ipcRenderer.invoke('dialog:openFile'),
@@ -31,6 +60,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onTranscriptionProgress: (callback: (data: TranscriptionProgress) => void) => {
     ipcRenderer.on('transcribe:progress', (_event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('transcribe:progress');
+  },
+
+  // Python-based transcription with optional sermon processing
+  startPythonTranscription: (options: ExtendedTranscriptionOptions) =>
+    ipcRenderer.invoke('transcribe:startPython', options),
+  cancelPythonTranscription: () => ipcRenderer.invoke('transcribe:cancelPython'),
+  onPipelineProgress: (callback: (data: PipelineProgress) => void) => {
+    ipcRenderer.on('transcribe:pipelineProgress', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('transcribe:pipelineProgress');
+  },
+
+  // Python environment management
+  checkPythonStatus: (): Promise<PythonStatus> => ipcRenderer.invoke('python:checkStatus'),
+  installPython: () => ipcRenderer.invoke('python:install'),
+  downloadPythonModel: (modelName: string) => ipcRenderer.invoke('python:downloadModel', modelName),
+  checkPythonDependencies: () => ipcRenderer.invoke('python:checkDependencies'),
+  onPythonInstallProgress: (callback: (data: PythonInstallProgress) => void) => {
+    ipcRenderer.on('python:installProgress', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('python:installProgress');
+  },
+  onPythonModelProgress: (callback: (data: { progress: number; message: string }) => void) => {
+    ipcRenderer.on('python:modelProgress', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('python:modelProgress');
   },
 
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),

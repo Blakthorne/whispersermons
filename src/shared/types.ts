@@ -36,7 +36,52 @@ export type OutputFormat = 'vtt' | 'srt' | 'txt' | 'json' | 'docx' | 'pdf' | 'md
 export interface TranscriptionSettings {
   model: WhisperModelName;
   language: LanguageCode;
+  processAsSermon: boolean;
 }
+
+// ============================================================================
+// SERMON PROCESSING TYPES
+// ============================================================================
+
+/**
+ * Result from sermon processing pipeline
+ */
+export interface SermonDocument {
+  /** Title extracted from audio metadata */
+  title?: string;
+  /** Main Bible passage from audio metadata comment field */
+  biblePassage?: string;
+  /** Extracted scripture references */
+  references: string[];
+  /** Extracted keyword tags */
+  tags: string[];
+  /** Processed body text with paragraphs and Bible quotes */
+  body: string;
+  /** Raw transcript before processing */
+  rawTranscript: string;
+}
+
+/**
+ * Pipeline stage progress
+ */
+export interface PipelineStage {
+  id: number;
+  name: string;
+  status: 'pending' | 'active' | 'complete' | 'error';
+  percent: number;
+  message?: string;
+}
+
+/**
+ * Pipeline stages for sermon processing
+ */
+export const SERMON_PIPELINE_STAGES: readonly { id: number; name: string }[] = [
+  { id: 1, name: 'Transcribing audio' },
+  { id: 2, name: 'Extracting metadata' },
+  { id: 3, name: 'Processing Bible quotes' },
+  { id: 4, name: 'Segmenting paragraphs' },
+  { id: 5, name: 'Extracting tags' },
+] as const;
 
 export type QualityLevel = 1 | 2 | 3 | 4 | 5;
 
@@ -108,12 +153,22 @@ export interface HistoryItem {
   duration: number;
   preview: string;
   fullText: string;
+  /** Whether this was processed as a sermon */
+  isSermon?: boolean;
+  /** Sermon document data (if isSermon) */
+  sermonDocument?: SermonDocument;
+  /** HTML content from WYSIWYG editor for restoring state */
+  documentHtml?: string;
 }
 
 export interface SaveFileOptions {
   defaultName: string;
   content: string;
   format: OutputFormat;
+  /** HTML content from sermon editor (used instead of content for sermon exports) */
+  html?: string;
+  /** Whether this is a sermon document */
+  isSermon?: boolean;
 }
 
 export interface SaveFileResult {

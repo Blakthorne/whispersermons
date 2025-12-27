@@ -14,7 +14,22 @@ import type {
   UpdateStatus,
 } from '../types';
 
+import type {
+  PythonStatus,
+  PythonInstallProgress,
+  PipelineProgress,
+  ExtendedTranscriptionOptions,
+  SermonTranscriptionResult,
+} from '../types/electron';
+
 export type { TranscriptionOptions, TranscriptionResult, SaveFileOptions, SaveFileResult };
+export type {
+  PythonStatus,
+  PythonInstallProgress,
+  PipelineProgress,
+  ExtendedTranscriptionOptions,
+  SermonTranscriptionResult,
+};
 
 export function isElectronAvailable(): boolean {
   return typeof window !== 'undefined' && !!window.electronAPI;
@@ -154,4 +169,75 @@ export function onMenuCancelTranscription(callback: () => void): Unsubscribe {
 
 export function onMenuToggleHistory(callback: () => void): Unsubscribe {
   return window.electronAPI?.onMenuToggleHistory(callback) ?? (() => {});
+}
+
+// =============================================================================
+// Python Environment Management
+// =============================================================================
+
+export async function checkPythonStatus(): Promise<PythonStatus> {
+  const result = await window.electronAPI?.checkPythonStatus();
+  return (
+    result ?? {
+      installed: false,
+      packagesInstalled: false,
+      modelsDownloaded: false,
+      error: 'Electron API not available',
+    }
+  );
+}
+
+export async function installPython(): Promise<{ success: boolean; error?: string }> {
+  const result = await window.electronAPI?.installPython();
+  return result ?? { success: false, error: 'Electron API not available' };
+}
+
+export async function downloadPythonModel(
+  modelName: string
+): Promise<{ success: boolean; model: string; error?: string }> {
+  const result = await window.electronAPI?.downloadPythonModel(modelName);
+  return result ?? { success: false, model: modelName, error: 'Electron API not available' };
+}
+
+export async function checkPythonDependencies(): Promise<{
+  available: boolean;
+  missing: string[];
+}> {
+  const result = await window.electronAPI?.checkPythonDependencies();
+  return result ?? { available: false, missing: [] };
+}
+
+export function onPythonInstallProgress(
+  callback: (progress: PythonInstallProgress) => void
+): Unsubscribe {
+  return window.electronAPI?.onPythonInstallProgress(callback) ?? (() => {});
+}
+
+export function onPythonModelProgress(
+  callback: (data: { progress: number; message: string }) => void
+): Unsubscribe {
+  return window.electronAPI?.onPythonModelProgress(callback) ?? (() => {});
+}
+
+// =============================================================================
+// Python Transcription with Sermon Processing
+// =============================================================================
+
+export async function startPythonTranscription(
+  options: ExtendedTranscriptionOptions
+): Promise<SermonTranscriptionResult> {
+  const result = await window.electronAPI?.startPythonTranscription(options);
+  return result ?? { success: false, error: 'Electron API not available' };
+}
+
+export async function cancelPythonTranscription(): Promise<{
+  success: boolean;
+  message?: string;
+}> {
+  const result = await window.electronAPI?.cancelPythonTranscription();
+  return result ?? { success: false, message: 'Electron API not available' };
+}
+
+export function onPipelineProgress(callback: (progress: PipelineProgress) => void): Unsubscribe {
+  return window.electronAPI?.onPipelineProgress(callback) ?? (() => {});
 }
