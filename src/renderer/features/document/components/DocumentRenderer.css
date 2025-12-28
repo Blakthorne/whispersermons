@@ -1,0 +1,335 @@
+/**
+ * Document Renderer Styles
+ *
+ * Styles for the AST-based document rendering components.
+ * These styles complement the existing SermonEditor.css styles.
+ */
+
+/* ============================================================================
+   DOCUMENT CONTAINER
+   ============================================================================ */
+
+.document-renderer {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text-primary, #1a1a1a);
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.document-renderer--legacy {
+  /* Visual indicator for legacy mode (optional) */
+}
+
+.document-renderer--readonly {
+  user-select: text;
+  cursor: text;
+}
+
+/* ============================================================================
+   PARAGRAPH STYLES
+   ============================================================================ */
+
+.document-paragraph {
+  margin: 0 0 1em 0;
+  position: relative;
+}
+
+.document-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+/* ============================================================================
+   TEXT NODE STYLES
+   ============================================================================ */
+
+.document-text {
+  /* Base text styling - inherits from parent */
+}
+
+/* ============================================================================
+   QUOTE BLOCK STYLES
+   ============================================================================ */
+
+.document-quote-block {
+  position: relative;
+  margin: 1.5em 0;
+  padding: 1em 1.25em;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.08) 0%,
+    rgba(139, 92, 246, 0.08) 100%
+  );
+  border-left: 4px solid var(--accent-color, #3b82f6);
+  border-radius: 0 8px 8px 0;
+  font-style: italic;
+}
+
+.document-quote-block--high-confidence {
+  border-left-color: #22c55e;
+  background: linear-gradient(
+    135deg,
+    rgba(34, 197, 94, 0.08) 0%,
+    rgba(59, 130, 246, 0.08) 100%
+  );
+}
+
+.document-quote-block--medium-confidence {
+  border-left-color: #f59e0b;
+  background: linear-gradient(
+    135deg,
+    rgba(245, 158, 11, 0.08) 0%,
+    rgba(59, 130, 246, 0.08) 100%
+  );
+}
+
+.document-quote-block--low-confidence {
+  border-left-color: #ef4444;
+  background: linear-gradient(
+    135deg,
+    rgba(239, 68, 68, 0.08) 0%,
+    rgba(59, 130, 246, 0.08) 100%
+  );
+}
+
+.document-quote-block--verified {
+  border-left-width: 5px;
+}
+
+.document-quote-block--verified::before {
+  content: '✓';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 12px;
+  color: #22c55e;
+  font-style: normal;
+}
+
+/* Quote reference attribution */
+.document-quote-reference {
+  display: block;
+  margin-top: 0.75em;
+  padding-top: 0.5em;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  font-style: normal;
+  font-size: 0.9em;
+  color: var(--text-secondary, #666);
+}
+
+.document-quote-reference-link {
+  color: var(--accent-color, #3b82f6);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.document-quote-reference-link:hover {
+  text-decoration: underline;
+}
+
+.document-quote-translation {
+  font-size: 0.85em;
+  color: var(--text-tertiary, #999);
+  margin-left: 0.5em;
+}
+
+/* Quote content area */
+.document-quote-content {
+  font-style: italic;
+}
+
+/* ============================================================================
+   INTERJECTION STYLES
+   ============================================================================ */
+
+.document-interjection {
+  display: inline;
+  padding: 2px 6px;
+  margin: 0 2px;
+  background: rgba(245, 158, 11, 0.15);
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-style: normal;
+  color: var(--text-secondary, #666);
+}
+
+.document-interjection::before {
+  content: '[';
+  color: var(--text-tertiary, #999);
+}
+
+.document-interjection::after {
+  content: ']';
+  color: var(--text-tertiary, #999);
+}
+
+/* ============================================================================
+   HEADING STYLES
+   ============================================================================ */
+
+.document-heading {
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  margin: 1.5em 0 0.5em 0;
+}
+
+.document-heading:first-child {
+  margin-top: 0;
+}
+
+.document-heading--level-1 {
+  font-size: 1.75em;
+  border-bottom: 2px solid var(--accent-color, #3b82f6);
+  padding-bottom: 0.3em;
+}
+
+.document-heading--level-2 {
+  font-size: 1.4em;
+}
+
+.document-heading--level-3 {
+  font-size: 1.15em;
+  color: var(--text-secondary, #666);
+}
+
+.document-heading--level-4,
+.document-heading--level-5,
+.document-heading--level-6 {
+  font-size: 1em;
+}
+
+/* ============================================================================
+   LIST STYLES
+   ============================================================================ */
+
+.document-list {
+  margin: 1em 0;
+  padding-left: 2em;
+}
+
+.document-list--ordered {
+  list-style-type: decimal;
+}
+
+.document-list--unordered {
+  list-style-type: disc;
+}
+
+.document-list-item {
+  margin: 0.25em 0;
+}
+
+/* ============================================================================
+   METADATA HEADER
+   ============================================================================ */
+
+.document-metadata {
+  padding: 12px 0;
+  margin-bottom: 1em;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+.document-title {
+  font-size: 1.75em;
+  font-weight: 700;
+  text-align: center;
+  margin: 0 0 0.5em 0;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.document-bible-passage {
+  text-align: center;
+  color: var(--text-secondary, #666);
+  font-size: 1em;
+}
+
+.document-bible-passage-label {
+  font-weight: 500;
+}
+
+/* ============================================================================
+   STATISTICS BAR
+   ============================================================================ */
+
+.document-stats {
+  display: flex;
+  gap: 1.5em;
+  padding: 8px 0;
+  margin-bottom: 1em;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  font-size: 0.85em;
+  color: var(--text-secondary, #666);
+}
+
+.document-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.document-stat-value {
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+/* ============================================================================
+   DARK MODE ADJUSTMENTS
+   ============================================================================ */
+
+[data-theme='dark'] .document-renderer,
+.dark .document-renderer {
+  color: var(--text-primary, #f5f5f5);
+}
+
+[data-theme='dark'] .document-quote-block,
+.dark .document-quote-block {
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.15) 0%,
+    rgba(139, 92, 246, 0.15) 100%
+  );
+}
+
+[data-theme='dark'] .document-quote-reference,
+.dark .document-quote-reference {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='dark'] .document-interjection,
+.dark .document-interjection {
+  background: rgba(245, 158, 11, 0.25);
+}
+
+[data-theme='dark'] .document-heading--level-1,
+.dark .document-heading--level-1 {
+  border-bottom-color: var(--accent-color, #60a5fa);
+}
+
+/* ============================================================================
+   PRINT STYLES
+   ============================================================================ */
+
+@media print {
+  .document-renderer {
+    font-size: 12pt;
+    line-height: 1.5;
+    color: #000;
+  }
+
+  .document-quote-block {
+    background: #f5f5f5;
+    border-left-color: #333;
+    page-break-inside: avoid;
+  }
+
+  .document-interjection {
+    background: #e5e5e5;
+    color: #333;
+  }
+
+  .document-stats {
+    display: none;
+  }
+}

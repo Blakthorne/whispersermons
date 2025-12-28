@@ -2992,6 +2992,107 @@ def get_quote_char_ranges(quotes: List[QuoteBoundary]) -> List[Tuple[int, int]]:
     """
     return [(q.start_pos, q.end_pos) for q in quotes]
 
+
+# ============================================================================
+# AST BUILDER INTEGRATION (NEW DOCUMENT MODEL)
+# ============================================================================
+
+def process_text_to_ast(
+    text: str,
+    translation: Optional[str] = None,
+    verbose: bool = True,
+    auto_detect: bool = True,
+    progress_callback: Optional[callable] = None,
+    title: Optional[str] = None,
+    bible_passage: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+) -> 'ASTBuilderResult':
+    """
+    Process text and build structured AST document model.
+    
+    This is the new entry point that produces a rich structured document
+    instead of plain text with embedded quote marks.
+    
+    Args:
+        text: Raw transcript text
+        translation: Bible translation to use (None for auto-detect)
+        verbose: Whether to print progress messages
+        auto_detect: If True, auto-detect translation per quote
+        progress_callback: Optional progress callback(percent, message)
+        title: Document title (from audio metadata)
+        bible_passage: Main Bible passage (from audio metadata)
+        tags: Extracted keyword tags
+    
+    Returns:
+        ASTBuilderResult containing:
+        - document_state: Complete document state with AST, indexes, event log
+        - processing_metadata: Timing and statistics
+    """
+    # Import AST builder (lazy import to avoid circular dependency)
+    from ast_builder import build_ast, ASTBuilderResult
+    
+    # Step 1: Process text using existing pipeline (returns text + quotes)
+    processed_text, quote_boundaries = process_text(
+        text=text,
+        translation=translation,
+        verbose=verbose,
+        auto_detect=auto_detect,
+        progress_callback=progress_callback
+    )
+    
+    # Step 2: Build AST from processed text and quotes
+    if verbose:
+        print("\n🏗️  Building document AST...")
+    
+    result = build_ast(
+        paragraphed_text=processed_text,
+        quote_boundaries=quote_boundaries,
+        title=title,
+        bible_passage=bible_passage,
+        tags=tags or []
+    )
+    
+    if verbose:
+        print(f"   ✓ Built AST with {result.processing_metadata.paragraph_count} paragraphs, "
+              f"{result.processing_metadata.quote_count} quotes")
+    
+    return result
+
+
+def process_text_to_ast_json(
+    text: str,
+    translation: Optional[str] = None,
+    verbose: bool = True,
+    auto_detect: bool = True,
+    progress_callback: Optional[callable] = None,
+    title: Optional[str] = None,
+    bible_passage: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+) -> str:
+    """
+    Process text and return AST as JSON string.
+    
+    Convenience wrapper around process_text_to_ast that returns JSON.
+    
+    Args:
+        Same as process_text_to_ast
+    
+    Returns:
+        JSON string of the ASTBuilderResult
+    """
+    result = process_text_to_ast(
+        text=text,
+        translation=translation,
+        verbose=verbose,
+        auto_detect=auto_detect,
+        progress_callback=progress_callback,
+        title=title,
+        bible_passage=bible_passage,
+        tags=tags
+    )
+    return result.to_json()
+
+
 # ============================================================================
 # TESTING / VERIFICATION
 # ============================================================================

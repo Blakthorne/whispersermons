@@ -4,6 +4,9 @@ export interface SelectedFile {
   size?: number;
 }
 
+// Import document model types for SermonDocument
+import type { DocumentState } from './documentModel';
+
 export type WhisperModelName =
   | 'tiny'
   | 'tiny.en'
@@ -59,6 +62,28 @@ export interface SermonDocument {
   body: string;
   /** Raw transcript before processing */
   rawTranscript: string;
+  /**
+   * Structured document state (new AST-based model)
+   * Contains the full document tree with stable node IDs, quote metadata,
+   * interjection positions, and event log for undo/redo.
+   * 
+   * This field is optional for backward compatibility with older transcriptions.
+   */
+  documentState?: DocumentState;
+  /**
+   * Processing metadata with timing and statistics
+   */
+  processingMetadata?: {
+    stageTimes: Record<string, number>;
+    totalTime: number;
+    quoteCount: number;
+    paragraphCount: number;
+    interjectionCount: number;
+  };
+  /**
+   * Error message if AST building failed (legacy output still available)
+   */
+  astError?: string;
 }
 
 /**
@@ -81,6 +106,7 @@ export const SERMON_PIPELINE_STAGES: readonly { id: number; name: string }[] = [
   { id: 3, name: 'Processing Bible quotes' },
   { id: 4, name: 'Segmenting paragraphs' },
   { id: 5, name: 'Extracting tags' },
+  { id: 6, name: 'Building document model' },
 ] as const;
 
 export type QualityLevel = 1 | 2 | 3 | 4 | 5;

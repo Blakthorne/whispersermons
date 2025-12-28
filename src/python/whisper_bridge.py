@@ -538,7 +538,8 @@ def extract_tags(
 def process_sermon(
     file_path: str,
     model_name: str = "medium",
-    language: str = "en"
+    language: str = "en",
+    use_ast: bool = True  # New: enable structured document model
 ) -> Dict[str, Any]:
     """
     Full sermon processing pipeline:
@@ -547,14 +548,16 @@ def process_sermon(
     3. Process Bible quotes (with per-quote translation detection)
     4. Segment into paragraphs
     5. Extract tags
+    6. Build structured AST (if use_ast=True)
     
     Args:
         file_path: Path to audio file
         model_name: Whisper model to use
         language: Language code or 'auto'
+        use_ast: If True, include documentState with structured AST
     
     Returns:
-        Structured document data
+        Structured document data with optional documentState
     """
     # Clear Bible verse cache at start of each transcription to prevent unbounded growth
     from bible_quote_processor import clear_bible_verse_cache
@@ -566,7 +569,8 @@ def process_sermon(
         'tags': [],
         'references': [],
         'body': '',
-        'rawTranscript': ''
+        'rawTranscript': '',
+        'documentState': None  # New: structured document model
     }
     
     # Stage 1: Transcribe
@@ -597,6 +601,33 @@ def process_sermon(
     # Stage 5: Extract tags
     tags = extract_tags(paragraphed_text, quote_boundaries)
     result['tags'] = tags
+    
+    # Stage 6: Build structured AST (new document model)
+    if use_ast:
+        emit_progress(6, "Building document model", 0, "Creating structured document...")
+        try:
+            from ast_builder import build_ast
+            
+            ast_result = build_ast(
+                paragraphed_text=paragraphed_text,
+                quote_boundaries=quote_boundaries,
+                title=result['title'],
+                bible_passage=result['biblePassage'],
+                tags=tags
+            )
+            
+            # Include full document state in result
+            result['documentState'] = ast_result.document_state.to_dict()
+            result['processingMetadata'] = ast_result.processing_metadata.to_dict()
+            
+            emit_progress(6, "Building document model", 100, "Document model complete")
+        except Exception as e:
+            # Log error but don't fail - legacy output is still available
+            import traceback
+            print(f"Warning: AST building failed: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            result['documentState'] = None
+            result['astError'] = str(e)
     
     return result
 

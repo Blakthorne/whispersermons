@@ -9,6 +9,9 @@
 
 .app-header {
   padding: 16px 24px;
+  /* Add left padding to accommodate macOS traffic light buttons (close/minimize/maximize) */
+  /* Traffic lights are positioned at x:20, y:20 and need ~80px horizontal space */
+  padding-left: 90px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
