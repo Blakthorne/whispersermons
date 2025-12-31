@@ -2377,123 +2377,6 @@ def detect_interjections(text: str, start_pos: int, end_pos: int) -> List[Tuple[
     return merged
 
 # ============================================================================
-# QUOTE APPLICATION
-# ============================================================================
-
-def apply_quotes_to_text(text: str, quotes: List[QuoteBoundary]) -> str:
-    """
-    Apply quotation marks to detected Bible quotes, handling interjections.
-    
-    Args:
-        text: Original transcript text
-        quotes: List of detected quote boundaries
-    
-    Returns:
-        Text with quotation marks applied
-    """
-    if not quotes:
-        return text
-    
-    # Filter out overlapping quotes - keep the highest confidence one
-    quotes_filtered = []
-    quotes_sorted_by_pos = sorted(quotes, key=lambda q: q.start_pos)
-    
-    for quote in quotes_sorted_by_pos:
-        overlaps = False
-        for existing in quotes_filtered:
-            # Check for overlap
-            if (quote.start_pos < existing.end_pos and quote.end_pos > existing.start_pos):
-                overlaps = True
-                # Keep the one with higher confidence
-                if quote.confidence > existing.confidence:
-                    quotes_filtered.remove(existing)
-                    quotes_filtered.append(quote)
-                break
-        if not overlaps:
-            quotes_filtered.append(quote)
-    
-    # Sort quotes by position (end position descending to avoid index shifting)
-    quotes_sorted = sorted(quotes_filtered, key=lambda q: q.start_pos, reverse=True)
-    
-    result = text
-    
-    for quote in quotes_sorted:
-        start = quote.start_pos
-        end = quote.end_pos
-        interjections = quote.interjection_positions
-        
-        # Validate positions
-        if start < 0 or end > len(result) or start >= end:
-            continue
-        
-        # Extract the quote region and strip ALL existing quote marks
-        # (Whisper often adds its own quotes that don't align with verse boundaries)
-        quote_region = result[start:end]
-        quote_region_stripped = quote_region.replace('"', '')
-        
-        # ALWAYS convert interjection positions from absolute to relative
-        # Interjections are stored with absolute text positions, but we need
-        # positions relative to the quote_region_stripped
-        if interjections:
-            def adjust_position(pos):
-                # Convert absolute position to relative position within quote region
-                if pos < start:
-                    return -1  # Position before our region (invalid)
-                rel_pos = pos - start
-                # Also adjust for any removed quote characters
-                if quote_region != quote_region_stripped:
-                    quotes_before = quote_region[:rel_pos].count('"')
-                    rel_pos -= quotes_before
-                return rel_pos
-            
-            adjusted_interjections = []
-            for inter_start, inter_end in interjections:
-                adj_start = adjust_position(inter_start)
-                adj_end = adjust_position(inter_end)
-                # Validate the adjusted positions are within the stripped quote region
-                if adj_start >= 0 and adj_end <= len(quote_region_stripped) and adj_start < adj_end:
-                    adjusted_interjections.append((adj_start, adj_end))
-            interjections = adjusted_interjections
-        
-        if not interjections:
-            # Simple case: no interjections
-            quote_text = quote_region_stripped.strip()
-            result = result[:start] + '"' + quote_text + '"' + result[end:]
-        else:
-            # Complex case: split around interjections
-            # Build segments (positions relative to stripped quote region)
-            segments = []
-            current_pos = 0
-            
-            for inter_start, inter_end in sorted(interjections):
-                if inter_start > current_pos:
-                    # Add quote segment before interjection
-                    segments.append(('quote', current_pos, inter_start))
-                # Add interjection (unquoted)
-                segments.append(('inter', inter_start, inter_end))
-                current_pos = inter_end
-            
-            # Add final segment after last interjection
-            if current_pos < len(quote_region_stripped):
-                segments.append(('quote', current_pos, len(quote_region_stripped)))
-            
-            # Build the new quote region with proper quotes
-            new_region_parts = []
-            for seg_type, seg_start, seg_end in segments:
-                seg_text = quote_region_stripped[seg_start:seg_end].strip()
-                if seg_type == 'quote' and seg_text:
-                    new_region_parts.append('"' + seg_text + '"')
-                elif seg_type == 'inter':
-                    new_region_parts.append(seg_text)
-            
-            new_region = ' '.join(new_region_parts)
-            result = result[:start] + new_region + result[end:]
-    
-    # Clean up double spaces and quote issues
-    result = re.sub(r'"\s+"', '" "', result)  # Normalize space between split quotes
-    result = re.sub(r'\s+', ' ', result)  # Remove multiple spaces
-    
-    return result
 
 # ============================================================================
 # MAIN PROCESSING PIPELINE
@@ -2951,19 +2834,13 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
                     if verbose:
                         print(f"   {chapter_ref}: ✗ No matching verses found in transcript")
     
-    # Phase 5: Apply quotation marks
-    report_progress(90, "Applying quotation marks...")
-    if verbose:
-        print(f"\n📝 Phase 5: Applying quotation marks to {len(quotes)} quotes...")
-    text = apply_quotes_to_text(text, quotes)
-    
     report_progress(100, "Bible processing complete")
     
     if verbose:
         print("\n" + "=" * 60)
         print("✅ Processing complete!")
         print(f"   • References normalized: {len(references)}")
-        print(f"   • Quotes marked: {len(quotes)}")
+        print(f"   • Quotes found: {len(quotes)}")
         
         # Show translation breakdown if per-quote detection was used
         if per_quote_detection and quotes:
@@ -3099,65 +2976,6 @@ def process_text_to_ast_json(
 # TESTING / VERIFICATION
 # ============================================================================
 
-def verify_example(text: str, start_phrase: str, end_phrase: str, example_name: str) -> bool:
-    """
-    Verify that a specific example has been properly quoted.
-    
-    Args:
-        text: Processed text
-        start_phrase: Expected start of quote
-        end_phrase: Expected end of quote  
-        example_name: Name of the example for logging
-    
-    Returns:
-        True if properly quoted, False otherwise
-    """
-    # Find the quote
-    start_idx = text.lower().find(start_phrase.lower())
-    end_idx = text.lower().find(end_phrase.lower())
-    
-    if start_idx == -1:
-        print(f"   ✗ {example_name}: Start phrase not found")
-        return False
-    
-    if end_idx == -1:
-        print(f"   ✗ {example_name}: End phrase not found")
-        return False
-    
-    # Check if there's an opening quote before start
-    before_start = text[max(0, start_idx - 5):start_idx]
-    has_opening = '"' in before_start
-    
-    # Check if there's a closing quote after end
-    after_end = text[end_idx + len(end_phrase):min(len(text), end_idx + len(end_phrase) + 5)]
-    has_closing = '"' in after_end
-    
-    if has_opening and has_closing:
-        print(f"   ✓ {example_name}: Properly quoted")
-        return True
-    else:
-        print(f"   ✗ {example_name}: Quote marks missing (open: {has_opening}, close: {has_closing})")
-        return False
-
-def run_verification(text: str):
-    """Run verification for all user-provided examples."""
-    print("\n🔬 Verifying user examples...")
-    
-    examples = [
-        ("And he called the wise men", "another way", "Example 1 (Matthew 2)"),
-        ("for unto us a child is born", "Prince of Peace", "Example 2 (Isaiah 9:6-7)"),
-        ("Wherefore he is able", "intercession for them", "Example 3 (Hebrews 7:25)"),
-        ("I beseech you therefore", "reasonable service", "Example 4 (Romans 12:1)"),
-    ]
-    
-    passed = 0
-    for start, end, name in examples:
-        if verify_example(text, start, end, name):
-            passed += 1
-    
-    print(f"\n   Results: {passed}/{len(examples)} examples verified")
-    return passed == len(examples)
-
 # ============================================================================
 # ENTRY POINT
 # ============================================================================
@@ -3176,6 +2994,3 @@ if __name__ == "__main__":
         output_file = input_file + '_processed'
     
     result = process_transcript(input_file, output_file)
-    
-    # Run verification
-    run_verification(result)

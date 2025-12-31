@@ -1,0 +1,114 @@
+.dev-ast-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1rem;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  gap: 1rem;
+}
+
+.dev-ast-panel.empty {
+  justify-content: center;
+  align-items: center;
+  color: var(--text-secondary);
+}
+
+.dev-ast-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dev-ast-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--accent-color, #e11d48);
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.dev-ast-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.dev-button {
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.dev-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dev-button.reset {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.dev-button.reset:hover:not(:disabled) {
+  background-color: var(--bg-tertiary);
+}
+
+.dev-button.update {
+  background-color: var(--accent-color, #e11d48);
+  color: white;
+}
+
+.dev-button.update:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.dev-ast-error {
+  padding: 0.75rem;
+  background-color: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 4px;
+  color: #ef4444;
+  font-size: 0.85rem;
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+
+.dev-ast-editor-container {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  /* Strict containment of the editor content */
+  position: relative;
+}
+
+/* 
+ * Monaco Tooltip Visibility
+ * 
+ * High-level fix: 
+ * 1. Tools use fixedOverflowWidgets: true (appended to body) to avoid being clipped by panel overflow.
+ * 2. Very high z-index ensures they aren't covered by the AppHeader or other layers.
+ * 3. Force "below" positioning for find widget buttons specifically safely within the view.
+ */
+.monaco-hover {
+  z-index: 100000 !important;
+}
+
+/* Force find widget tooltips to appear below the buttons */
+.monaco-editor .find-widget .monaco-hover {
+  top: 100% !important;
+  bottom: auto !important;
+  margin-top: 4px;
+}

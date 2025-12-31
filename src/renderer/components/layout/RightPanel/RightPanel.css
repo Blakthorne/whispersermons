@@ -10,7 +10,7 @@
 }
 
 /* Processing Complete Banner positioning */
-.right-panel-container > .processing-complete-banner {
+.right-panel-container>.processing-complete-banner {
   margin: 12px;
   flex-shrink: 0;
 }
@@ -31,9 +31,41 @@
   overflow: hidden;
 }
 
-.right-panel-main-content > .right-panel {
+.right-panel-main-content>.right-panel {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.right-panel-tabs {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.right-panel-tab {
+  padding: 0.4rem 0.8rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.right-panel-tab:hover {
+  color: var(--text-primary);
+}
+
+.right-panel-tab.active {
+  color: var(--accent-color, #e11d48);
+  border-bottom-color: var(--accent-color, #e11d48);
 }
 
 /* Quote Review Panel Content */

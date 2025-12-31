@@ -13,7 +13,7 @@ import { Node as TipTapNode, mergeAttributes } from '@tiptap/core';
 
 export interface QuoteBlockAttrs {
   /** Unique identifier from the AST */
-  quoteId?: string;
+  nodeId?: string;
   /** Bible reference (e.g., "John 3:16") */
   reference?: string;
   /** Book name (e.g., "John") */
@@ -99,13 +99,13 @@ export const QuoteBlockExtension = TipTapNode.create({
    */
   addAttributes() {
     return {
-      quoteId: {
+      nodeId: {
         default: null,
-        parseHTML: (element) => element.getAttribute('data-quote-id'),
+        parseHTML: (element) => element.getAttribute('data-node-id') || element.getAttribute('data-quote-id'),
         renderHTML: (attrs) => {
-          if (!attrs.quoteId) return {};
+          if (!attrs.nodeId) return {};
           return {
-            'data-quote-id': attrs.quoteId,
+            'data-node-id': attrs.nodeId,
           };
         },
       },
@@ -290,11 +290,19 @@ export const QuoteBlockExtension = TipTapNode.create({
   parseHTML() {
     return [
       {
+        tag: 'div[data-node-id]',
+        preserveAttributes: true,
+      },
+      {
         tag: 'div[data-quote-id]',
         preserveAttributes: true,
       },
       {
         tag: 'div.bible-quote',
+        preserveAttributes: true,
+      },
+      {
+        tag: 'blockquote[data-node-id]',
         preserveAttributes: true,
       },
       {
@@ -312,6 +320,7 @@ export const QuoteBlockExtension = TipTapNode.create({
           const el = element as HTMLElement;
           // Skip if it has our quote-specific attributes
           if (
+            el.hasAttribute('data-node-id') ||
             el.hasAttribute('data-quote-id') ||
             el.hasAttribute('data-reference')
           ) {

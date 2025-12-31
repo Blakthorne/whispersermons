@@ -5,13 +5,15 @@ import Link from '@tiptap/extension-link';
 import Highlight from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
+import Paragraph from '@tiptap/extension-paragraph';
+import Heading from '@tiptap/extension-heading';
 import { Quote } from 'lucide-react';
 import type { SermonDocument, OutputFormat } from '../../../../types';
 import type { DocumentState } from '../../../../../shared/documentModel';
 import { astToTipTapJson } from '../../../document/bridge/astTipTapConverter';
 import { SermonToolbar } from './SermonToolbar';
 import { Button } from '../../../../components/ui/Button';
-import { useQuoteReviewOptional, useEditorActionsOptional } from '../../../../contexts';
+import { useQuoteReviewOptional, useEditorActionsOptional, useAppTranscription } from '../../../../contexts';
 import { QuoteBlockExtension } from './extensions/QuoteBlockExtension';
 import { InterjectionMark } from './extensions/InterjectionMark';
 import './SermonEditor.css';
@@ -59,6 +61,65 @@ function SermonEditor({
   saveState = 'saved',
   lastSaved,
 }: SermonEditorProps): React.JSX.Element {
+  const { visibleNodeId, setVisibleNodeId } = useAppTranscription();
+  const isSelfScrollingRef = React.useRef(false);
+
+  // Memoize extensions to prevent duplicate warnings
+  const extensions = useMemo(() => [
+    StarterKit.configure({
+      heading: false, // Disable built-in heading as we override it
+      paragraph: false, // Disable built-in paragraph as we override it
+    }),
+    Paragraph.extend({
+      addAttributes() {
+        return {
+          nodeId: {
+            default: null,
+            parseHTML: (element) => element.getAttribute('data-node-id'),
+            renderHTML: (attrs) => {
+              if (!attrs.nodeId) return {};
+              return { 'data-node-id': attrs.nodeId };
+            },
+          },
+        };
+      },
+    }),
+    Heading.extend({
+      addAttributes() {
+        return {
+          nodeId: {
+            default: null,
+            parseHTML: (element) => element.getAttribute('data-node-id'),
+            renderHTML: (attrs) => {
+              if (!attrs.nodeId) return {};
+              return { 'data-node-id': attrs.nodeId };
+            },
+          },
+        };
+      },
+    }).configure({
+      levels: [1, 2, 3],
+    }),
+    Link.configure({
+      openOnClick: false,
+      HTMLAttributes: {
+        class: 'sermon-link',
+      },
+    }),
+    Highlight.configure({
+      multicolor: true,
+      HTMLAttributes: {
+        class: 'scripture-highlight',
+      },
+    }),
+    Underline,
+    TextAlign.configure({
+      types: ['heading', 'paragraph'],
+    }),
+    QuoteBlockExtension,
+    InterjectionMark,
+  ], []);
+
   // Convert sermon document to TipTap content
   const defaultContent = useMemo(() => {
     // Priority 1: Use initialHtml if provided (for history restoration)
@@ -135,31 +196,7 @@ function SermonEditor({
   }, [document, documentState, initialHtml]);
 
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: {
-          levels: [1, 2, 3],
-        },
-      }),
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: 'sermon-link',
-        },
-      }),
-      Highlight.configure({
-        multicolor: true,
-        HTMLAttributes: {
-          class: 'scripture-highlight',
-        },
-      }),
-      Underline,
-      TextAlign.configure({
-        types: ['heading', 'paragraph'],
-      }),
-      QuoteBlockExtension,
-      InterjectionMark,
-    ],
+    extensions,
     content: defaultContent,
     editable: true,
     onUpdate: ({ editor }) => {
@@ -196,6 +233,107 @@ function SermonEditor({
       editor.commands.setContent(defaultContent);
     }
   }, [document, editor, defaultContent, initialHtml]);
+
+  // Sync scroll from AST panel (visibleNodeId) to TipTap
+  // Tracks which ID we last successfully scrolled to
+  const lastSuccessfullyScrolledIdRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    let timer: any;
+    let retryTimer: any;
+
+    const performScrollSync = (retryCount = 0) => {
+      if (!editor || !visibleNodeId || isSelfScrollingRef.current) return;
+
+      const element = editor.view.dom.querySelector(`[data-node-id="${visibleNodeId}"]`) as HTMLElement;
+      const container = editor.view.dom.closest('.sermon-editor-content') as HTMLElement;
+
+      if (element && container) {
+        isSelfScrollingRef.current = true;
+        
+        const containerRect = container.getBoundingClientRect();
+        const elementRect = element.getBoundingClientRect();
+        const relativeTop = elementRect.top - containerRect.top;
+        const targetScrollTop = container.scrollTop + relativeTop - (containerRect.height / 2) + (elementRect.height / 2);
+        
+        container.scrollTo({
+          top: targetScrollTop,
+          behavior: retryCount > 0 ? 'auto' : 'smooth' // Use instant jump if it was a delayed sync for better feel
+        });
+        
+        lastSuccessfullyScrolledIdRef.current = visibleNodeId;
+
+        timer = setTimeout(() => {
+          isSelfScrollingRef.current = false;
+        }, 500);
+      } else if (retryCount < 5) {
+        // If element not found, it might still be rendering. Retry a few times.
+        retryTimer = setTimeout(() => performScrollSync(retryCount + 1), 100 * (retryCount + 1));
+      }
+    };
+
+    // Only trigger if the ID changed or if we haven't successfully scrolled to the current ID yet
+    if (visibleNodeId !== lastSuccessfullyScrolledIdRef.current) {
+      performScrollSync();
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [visibleNodeId, editor]);
+
+  // Track scroll using IntersectionObserver to update visibleNodeId
+  useEffect(() => {
+    if (!editor || isSelfScrollingRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // CRITICAL: Check the ref inside the callback
+        if (isSelfScrollingRef.current) return;
+
+        // Find the topmost visible entry
+        const visibleEntries = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+
+        if (visibleEntries.length > 0) {
+          const topEntry = visibleEntries[0];
+          if (topEntry) {
+            const nodeId = topEntry.target.getAttribute('data-node-id');
+            if (nodeId && nodeId !== visibleNodeId) {
+              isSelfScrollingRef.current = true;
+              setVisibleNodeId(nodeId);
+              setTimeout(() => {
+                isSelfScrollingRef.current = false;
+              }, 150);
+            }
+          }
+        }
+      },
+      {
+        root: editor.view.dom.parentElement,
+        threshold: 0.1,
+      }
+    );
+
+    // Observe all blocks with node IDs
+    const registerBlocks = () => {
+      const blocks = editor.view.dom.querySelectorAll('[data-node-id]');
+      blocks.forEach((block) => observer.observe(block));
+    };
+
+    registerBlocks();
+
+    // Re-register if content changes
+    const mutationObserver = new MutationObserver(registerBlocks);
+    mutationObserver.observe(editor.view.dom, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, [editor, visibleNodeId, setVisibleNodeId]);
 
   // Sync HTML content to parent on initial load and content changes
   useEffect(() => {

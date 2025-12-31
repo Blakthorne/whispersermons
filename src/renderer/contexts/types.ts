@@ -51,6 +51,10 @@ export interface TranscriptionStateContextValue {
   documentSaveState: DocumentSaveState;
   /** Timestamp of last successful save */
   lastSavedAt: Date | null;
+  /** Whether the app is running in development mode */
+  isDev: boolean;
+  /** The ID of the node currently visible at the top of the viewport (for scroll sync) */
+  visibleNodeId: string | null;
 }
 
 export interface TranscriptionActionsContextValue {
@@ -71,7 +75,9 @@ export interface TranscriptionActionsContextValue {
   setDocumentHtml: (html: string | null) => void;
   /** Save current editor edits to history */
   saveEdits: () => void;
+  /** Set the ID of the currently visible node (for scroll sync) */
+  setVisibleNodeId: (nodeId: string | null) => void;
 }
 
 export interface TranscriptionContextValue
-  extends TranscriptionStateContextValue, TranscriptionActionsContextValue {}
+  extends TranscriptionStateContextValue, TranscriptionActionsContextValue { }

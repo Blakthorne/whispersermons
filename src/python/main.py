@@ -528,46 +528,6 @@ def convert_to_markdown(transcript: str, quote_boundaries: Optional[List[QuoteBo
     if "---\n\n## Tags" in formatted_transcript:
         formatted_transcript = formatted_transcript.split("---\n\n## Tags")[0].strip()
     
-    # Step A: Italicize Bible quotes (text within quotation marks that are actual Bible quotes)
-    # We need to find quoted text that matches quote boundaries
-    if quote_boundaries:
-        # Build a set of quote texts for quick lookup
-        quote_texts = set()
-        for qb in quote_boundaries:
-            quote_texts.add(qb.verse_text.strip().lower())
-        
-        # Find all quoted text in the transcript and italicize Bible quotes
-        # Pattern matches text within "..." or "..."
-        def italicize_quote(match):
-            full_match = match.group(0)
-            inner_text = match.group(1)
-            
-            # Check if this is a Bible quote by comparing with known quote texts
-            inner_lower = inner_text.strip().lower()
-            
-            # Check for partial match (quote might be part of the text)
-            is_bible_quote = False
-            for qt in quote_texts:
-                # Check if there's significant overlap
-                if qt in inner_lower or inner_lower in qt:
-                    is_bible_quote = True
-                    break
-                # Check for substantial word overlap (for quotes with slight variations)
-                qt_words = set(qt.split())
-                inner_words = set(inner_lower.split())
-                if len(qt_words & inner_words) >= min(3, len(qt_words)):
-                    is_bible_quote = True
-                    break
-            
-            if is_bible_quote:
-                # Return italicized version (keep the quotes, add asterisks)
-                return f'*"{inner_text}"*'
-            return full_match
-        
-        # Match both regular quotes and smart quotes
-        quote_pattern = r'"([^"]+)"'
-        formatted_transcript = re.sub(quote_pattern, italicize_quote, formatted_transcript)
-    
     # Step B: Bold Bible verse references in the text
     # Create a pattern that matches Bible references like "Matthew 2:1-12", "John 3:16", etc.
     # This should match the book names followed by chapter:verse patterns
@@ -828,9 +788,10 @@ def segment_into_paragraphs(text: str, quote_boundaries: Optional[List[QuoteBoun
         if can_break and (next_sentence_idx + 1) < len(sentences):
             current_sent = sentences[next_sentence_idx].strip()
             following_sent = sentences[next_sentence_idx + 1].strip()
-            # Pattern: current ends with interjection question, next starts with quote
-            if re.search(r'\b(what|who|where|when|why|how)\?\s*"?\s*$', current_sent, re.IGNORECASE):
-                if following_sent.startswith('"'):
+            # Pattern: current ends with interjection question
+            if re.search(r'\b(what|who|where|when|why|how)\?\s*$', current_sent, re.IGNORECASE):
+                # If the next sentence is part of a quote, don't break
+                if (next_sentence_idx + 1) in sentences_in_quotes:
                     can_break = False
         
         # Only consider breaking if we have minimum sentences AND we're not in a quote/prayer

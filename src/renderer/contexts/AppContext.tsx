@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useRef, type ReactNode } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef, type ReactNode } from 'react';
 import { useTranscription, useBatchQueue, useQueueSelection } from '../features/transcription';
 import { useHistory } from '../features/history';
 import { useTheme, useCopyToClipboard, useElectronMenu } from '../hooks';
@@ -58,6 +58,17 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
   const [currentHistoryItemId, setCurrentHistoryItemId] = useState<string | null>(null);
   const [documentSaveState, setDocumentSaveState] = useState<DocumentSaveState>('saved');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [isDev, setIsDev] = useState<boolean>(false);
+  const [visibleNodeId, setVisibleNodeId] = useState<string | null>(null);
+
+  // Fetch app info on mount
+  useEffect(() => {
+    if (window.electronAPI?.getAppInfo) {
+      window.electronAPI.getAppInfo().then((info) => {
+        setIsDev(info.isDev);
+      });
+    }
+  }, []);
 
   // Track the last saved HTML to determine if document is dirty
   const lastSavedHtmlRef = useRef<string | null>(null);
@@ -334,6 +345,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       pipelineProgress,
       documentSaveState,
       lastSavedAt,
+      isDev,
+      visibleNodeId,
     }),
     [
       selectedFile,
@@ -350,6 +363,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       pipelineProgress,
       documentSaveState,
       lastSavedAt,
+      isDev,
+      visibleNodeId,
     ]
   );
 
@@ -369,6 +384,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       setSermonDocument,
       setDocumentHtml: handleSetDocumentHtml,
       saveEdits,
+      setVisibleNodeId,
     }),
     [
       setSelectedFile,
@@ -384,6 +400,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       selectQueueItem,
       handleSetDocumentHtml,
       saveEdits,
+      setVisibleNodeId,
     ]
   );
 

@@ -14,6 +14,7 @@ import { DEFAULT_PANEL_WIDTH } from '../../../types/quoteReview';
 import { QuoteReviewPanel } from '../../../features/quote-review/components/QuoteReviewPanel';
 import type { QuoteReviewItem } from '../../../types/quoteReview';
 import type { SermonDocument } from '../../../types';
+import { DevASTPanel } from '../../../features/dev/components/DevASTPanel/DevASTPanel';
 import './RightPanel.css';
 
 /**
@@ -224,7 +225,10 @@ function RightPanel(): React.JSX.Element {
     documentSaveState,
     lastSavedAt,
     selectedFile,
+    isDev,
   } = useAppTranscription();
+
+  const [activeTab, setActiveTab] = useState<'quotes' | 'ast'>('quotes');
 
   // Generate a stable document ID to key the provider
   // This ensures state (reviewed quotes, panel width) persists for the same document
@@ -270,18 +274,39 @@ function RightPanel(): React.JSX.Element {
         <QuoteReviewProvider documentId={documentId}>
           <RightPanelWithQuoteReview document={sermonDocument} key={documentId}>
             <div className="right-panel">
-              <QuoteAwareSermonEditor
-                document={sermonDocument}
-                documentState={sermonDocument.documentState}
-                initialHtml={documentHtml || undefined}
-                onSave={handleSave}
-                onCopy={handleCopy}
-                copySuccess={copySuccess}
-                onHtmlChange={setDocumentHtml}
-                onSaveEdits={saveEdits}
-                saveState={documentSaveState}
-                lastSaved={lastSavedAt}
-              />
+              {isDev && (
+                <div className="right-panel-tabs">
+                  <button
+                    className={`right-panel-tab ${activeTab === 'quotes' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('quotes')}
+                  >
+                    Quotes
+                  </button>
+                  <button
+                    className={`right-panel-tab ${activeTab === 'ast' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('ast')}
+                  >
+                    Dev AST
+                  </button>
+                </div>
+              )}
+
+              {activeTab === 'quotes' ? (
+                <QuoteAwareSermonEditor
+                  document={sermonDocument}
+                  documentState={sermonDocument.documentState}
+                  initialHtml={documentHtml || undefined}
+                  onSave={handleSave}
+                  onCopy={handleCopy}
+                  copySuccess={copySuccess}
+                  onHtmlChange={setDocumentHtml}
+                  onSaveEdits={saveEdits}
+                  saveState={documentSaveState}
+                  lastSaved={lastSavedAt}
+                />
+              ) : (
+                <DevASTPanel />
+              )}
             </div>
           </RightPanelWithQuoteReview>
         </QuoteReviewProvider>

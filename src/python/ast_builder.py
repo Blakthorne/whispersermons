@@ -292,13 +292,11 @@ class ASTBuilder:
             # Add text before quote
             if quote_start_rel > current_pos_in_para:
                 text_before = para_content[current_pos_in_para:quote_start_rel]
-                text_before = self._clean_quote_markers(text_before)
                 if text_before.strip():
                     children.append(create_text_node(text_before))
             
             # Add quote node
             quote_content = para_content[quote_start_rel:quote_end_rel]
-            quote_content = self._clean_quote_markers(quote_content)
             
             quote_node = self._build_quote_node(quote, quote_content)
             children.append(quote_node)
@@ -308,7 +306,6 @@ class ASTBuilder:
         # Add remaining text after last quote
         if current_pos_in_para < len(para_content):
             text_after = para_content[current_pos_in_para:]
-            text_after = self._clean_quote_markers(text_after)
             if text_after.strip():
                 children.append(create_text_node(text_after))
         
@@ -318,34 +315,6 @@ class ASTBuilder:
         
         return children
     
-    def _clean_quote_markers(self, text: str) -> str:
-        """
-        Surgically remove legacy quotation marks while preserving whitespace.
-        Only removes one level of quotes if they exist at the boundaries.
-        """
-        if not text:
-            return text
-            
-        # We only remove markers if they are part of the 'decoration' 
-        # specifically added by the older pipeline phases.
-        # Handle both straight and smart quotes.
-        quotes = ('"', '“', '”', '"', '"') # including literal strings from view
-        
-        # Strip from start (preserving internal spaces)
-        stripped_start = text.lstrip()
-        leading_ws = text[:len(text) - len(stripped_start)]
-        
-        if stripped_start and stripped_start[0] in quotes:
-            text = leading_ws + stripped_start[1:]
-        
-        # Strip from end (preserving internal spaces)
-        stripped_end = text.rstrip()
-        trailing_ws = text[len(stripped_end):]
-        
-        if stripped_end and stripped_end[-1] in quotes:
-            text = stripped_end[:-1] + trailing_ws
-            
-        return text
     
     def _build_quote_node(self, quote: QuoteBoundary, content: str) -> QuoteBlockNode:
         """
