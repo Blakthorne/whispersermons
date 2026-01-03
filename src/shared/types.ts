@@ -61,13 +61,13 @@ export interface SermonDocument {
   references: string[];
   /** Extracted keyword tags */
   tags: string[];
-  /** Processed body text with paragraphs and Bible quotes */
+  /** Processed body text with paragraphs and Bible passages */
   body: string;
   /** Raw transcript before processing */
   rawTranscript: string;
   /**
    * Structured document state (new AST-based model)
-   * Contains the full document tree with stable node IDs, quote metadata,
+   * Contains the full document tree with stable node IDs, passage metadata,
    * interjection positions, and event log for undo/redo.
    * 
    * This field is optional for backward compatibility with older transcriptions.
@@ -79,7 +79,7 @@ export interface SermonDocument {
   processingMetadata?: {
     stageTimes: Record<string, number>;
     totalTime: number;
-    quoteCount: number;
+    passageCount: number;
     paragraphCount: number;
     interjectionCount: number;
   };

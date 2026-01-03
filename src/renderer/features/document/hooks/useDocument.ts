@@ -13,7 +13,6 @@ import type {
   DocumentRootNode,
   DocumentNode,
   ParagraphNode,
-  HeadingNode,
   NodeId,
 } from '../../../../shared/documentModel';
 
@@ -54,8 +53,8 @@ export interface UseDocumentResult {
   /** All paragraphs */
   paragraphs: ParagraphNode[];
 
-  /** All headings */
-  headings: HeadingNode[];
+  /** All headings (paragraphs with headingLevel formatting) */
+  headings: (ParagraphNode & { headingLevel: 1 | 2 | 3 })[];
 
   /** Extracted references (for backward compatibility) */
   references: string[];

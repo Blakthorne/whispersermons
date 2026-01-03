@@ -26,18 +26,18 @@ from document_model import (
     DocumentRootNode,
     ParagraphNode,
     TextNode,
-    QuoteBlockNode,
+    PassageNode,
     InterjectionNode,
     BibleReferenceMetadata,
     QuoteDetectionMetadata,
     InterjectionMetadata,
-    QuoteMetadata,
+    PassageMetadata,
     ExtractedReferences,
     ProcessingMetadata,
     ASTBuilderResult,
     create_text_node,
     create_paragraph_node,
-    create_quote_block_node,
+    create_passage_node,
     create_document_root,
     create_document_state,
     generate_node_id,
@@ -164,7 +164,7 @@ class ASTBuilder:
         # Update processing metadata
         self.processing_metadata.total_time = (time.time() - start_time) * 1000
         self.processing_metadata.paragraph_count = len(paragraph_nodes)
-        self.processing_metadata.quote_count = len(quote_boundaries)
+        self.processing_metadata.passage_count = len(quote_boundaries)
         self.processing_metadata.interjection_count = sum(
             1 for qb in quote_boundaries if qb.has_interjection
             for _ in (qb.interjection_positions or [])
@@ -239,7 +239,7 @@ class ASTBuilder:
         full_text: str
     ) -> List[ParagraphNode]:
         """
-        Build paragraph nodes with embedded quote nodes.
+        Build paragraph nodes with embedded passage nodes.
         """
         paragraph_nodes = []
         
@@ -251,24 +251,24 @@ class ASTBuilder:
                 children = [create_text_node(para_content)]
                 paragraph_nodes.append(create_paragraph_node(children=children))
             else:
-                # Paragraph with quotes - need to interleave text and quote nodes
-                children = self._build_paragraph_children_with_quotes(
+                # Paragraph with passages - need to interleave text and passage nodes
+                children = self._build_paragraph_children_with_passages(
                     para_content, para_start, quotes_in_para
                 )
                 paragraph_nodes.append(create_paragraph_node(children=children))
         
         return paragraph_nodes
     
-    def _build_paragraph_children_with_quotes(
+    def _build_paragraph_children_with_passages(
         self,
         para_content: str,
         para_start: int,
         quotes: List[QuoteBoundary]
     ) -> List[Any]:
         """
-        Build children for a paragraph that contains quotes.
+        Build children for a paragraph that contains passages.
         
-        This interleaves TextNode and QuoteBlockNode based on quote positions.
+        This interleaves TextNode and PassageNode based on passage positions.
         """
         children = []
         current_pos_in_para = 0
@@ -295,11 +295,11 @@ class ASTBuilder:
                 if text_before.strip():
                     children.append(create_text_node(text_before))
             
-            # Add quote node
+            # Add passage node
             quote_content = para_content[quote_start_rel:quote_end_rel]
             
-            quote_node = self._build_quote_node(quote, quote_content)
-            children.append(quote_node)
+            passage_node = self._build_passage_node(quote, quote_content)
+            children.append(passage_node)
             
             current_pos_in_para = quote_end_rel
         
@@ -316,9 +316,9 @@ class ASTBuilder:
         return children
     
     
-    def _build_quote_node(self, quote: QuoteBoundary, content: str) -> QuoteBlockNode:
+    def _build_passage_node(self, quote: QuoteBoundary, content: str) -> PassageNode:
         """
-        Build a QuoteBlockNode from a QuoteBoundary.
+        Build a PassageNode from a QuoteBoundary.
         """
         # Build reference metadata
         reference = BibleReferenceMetadata(
@@ -362,8 +362,8 @@ class ASTBuilder:
                         offset_end=rel_end
                     ))
         
-        # Create the quote block node
-        return create_quote_block_node(
+        # Create the passage block node
+        return create_passage_node(
             content=content,
             reference=reference,
             detection=detection,
@@ -469,7 +469,7 @@ def build_ast_from_raw_text(
     state = create_document_state(root=root, references=[], tags=[])
     
     builder.processing_metadata.paragraph_count = len(paragraphs)
-    builder.processing_metadata.quote_count = 0
+    builder.processing_metadata.passage_count = 0
     builder.processing_metadata.interjection_count = 0
     
     return ASTBuilderResult(
@@ -522,7 +522,7 @@ This is the third paragraph after the quote."""
     print("AST Builder Test:")
     print("=" * 60)
     print(f"Paragraphs: {result.processing_metadata.paragraph_count}")
-    print(f"Quotes: {result.processing_metadata.quote_count}")
+    print(f"Passages: {result.processing_metadata.passage_count}")
     print(f"Total time: {result.processing_metadata.total_time:.2f}ms")
     print()
     print("Document JSON (first 1000 chars):")

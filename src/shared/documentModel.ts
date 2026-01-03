@@ -2,7 +2,7 @@
  * Document Model - Hybrid AST + Event Log Architecture
  *
  * This module defines the complete type system for the structured document model
- * that replaces the legacy plain-text quote processing approach.
+ * that replaces the legacy plain-text passage processing approach.
  *
  * Key design principles:
  * - Stable UUIDs on all nodes (survives all edits)
@@ -13,9 +13,14 @@
  *
  * Architecture:
  * - DocumentNode: Base interface for all nodes in the AST
- * - QuoteBlockNode: Special node for Bible quotes with rich metadata
+ * - PassageNode: Special node for Bible passages with rich metadata
  * - DocumentEvent: Immutable events for all document mutations
  * - DocumentState: Complete state snapshot for persistence/undo
+ *
+ * IMPORTANT TERMINOLOGY:
+ * - 'passage' = Bible passage (semantic content with scripture reference)
+ * - 'blockQuote' = Visual formatting (indented block, like headings/alignment)
+ * These are distinct concepts and should not be confused.
  */
 
 // ============================================================================
@@ -44,16 +49,23 @@ export type Version = number;
 
 /**
  * All possible node types in the document AST.
+ *
+ * The AST has 5 semantic node types:
+ * - 'document': Root container
+ * - 'paragraph': Block content (can have heading/list/blockQuote formatting)
+ * - 'text': Leaf text content with optional marks
+ * - 'passage': Bible passage with rich metadata (scripture reference)
+ * - 'interjection': Inline element within passages (e.g., "amen")
+ *
+ * NOTE: Headings, lists, and block quotes are NOT separate node types. Instead,
+ * ParagraphNode has optional formatting properties (headingLevel, listStyle, isBlockQuote).
  */
 export type NodeType =
   | 'document'
   | 'paragraph'
   | 'text'
-  | 'quote_block'
-  | 'interjection'
-  | 'heading'
-  | 'list'
-  | 'list_item';
+  | 'passage'
+  | 'interjection';
 
 /**
  * Base interface for all document nodes.
@@ -92,50 +104,52 @@ export interface TextNode extends BaseNode {
 
 /**
  * Paragraph node - container for inline content.
+ *
+ * Can optionally have heading, list, or block quote formatting via properties.
+ * This keeps the AST semantically simple while allowing rich visual formatting.
+ *
+ * IMPORTANT: `isBlockQuote` is visual formatting (indented text), NOT a Bible passage.
+ * Bible passages use `PassageNode` with scripture metadata.
  */
 export interface ParagraphNode extends BaseNode {
   type: 'paragraph';
-  /** Child nodes (typically TextNode, InterjectionNode, etc.) */
+  /** Child nodes (typically TextNode, InterjectionNode) */
   children: DocumentNode[];
-}
-
-/**
- * Heading node for section titles.
- */
-export interface HeadingNode extends BaseNode {
-  type: 'heading';
-  /** Heading level (1-6) */
-  level: 1 | 2 | 3 | 4 | 5 | 6;
-  /** Child nodes */
-  children: DocumentNode[];
-}
-
-/**
- * List node for ordered/unordered lists.
- */
-export interface ListNode extends BaseNode {
-  type: 'list';
-  /** Whether the list is ordered (numbered) */
-  ordered: boolean;
-  /** List item children */
-  children: ListItemNode[];
-}
-
-/**
- * List item node.
- */
-export interface ListItemNode extends BaseNode {
-  type: 'list_item';
-  /** Content nodes */
-  children: DocumentNode[];
+  /**
+   * Optional heading level for visual formatting (1-3).
+   * When set, this paragraph renders as an H1-H3 element.
+   */
+  headingLevel?: 1 | 2 | 3;
+  /**
+   * Optional list style. When set, this paragraph is part of a list.
+   */
+  listStyle?: 'bullet' | 'ordered';
+  /**
+   * For ordered lists, the item number (1-based).
+   */
+  listNumber?: number;
+  /**
+   * Nesting depth for nested lists (0 = top level).
+   */
+  listDepth?: number;
+  /**
+   * Optional text alignment.
+   */
+  textAlign?: 'left' | 'center' | 'right' | 'justify';
+  /**
+   * Whether this paragraph is formatted as a block quote.
+   * This is VISUAL formatting only (indented text), NOT a Bible passage.
+   * Bible passages use PassageNode with scripture metadata.
+   */
+  isBlockQuote?: boolean;
 }
 
 // ============================================================================
-// BIBLE QUOTE TYPES
+// BIBLE PASSAGE TYPES
 // ============================================================================
 
 /**
- * Confidence level for quote detection.
+ * Confidence level for passage detection.
  */
 export type ConfidenceLevel = 'high' | 'medium' | 'low';
 
@@ -176,16 +190,16 @@ export interface BibleReferenceMetadata {
 }
 
 /**
- * Metadata for quote detection and matching.
+ * Metadata for passage detection and matching.
  */
-export interface QuoteDetectionMetadata {
+export interface PassageDetectionMetadata {
   /** Match confidence score (0.0 to 1.0) */
   confidence: number;
   /** Confidence level category */
   confidenceLevel: ConfidenceLevel;
   /** Detected Bible translation used */
   translation: BibleTranslation;
-  /** Whether translation was auto-detected for this quote */
+  /** Whether translation was auto-detected for this passage */
   translationAutoDetected: boolean;
   /** Actual verse text from Bible API (for verification/display) */
   verseText: string;
@@ -198,59 +212,62 @@ export interface QuoteDetectionMetadata {
 }
 
 /**
- * Interjection within a quote (e.g., "a what?", "amen?").
+ * Interjection within a passage (e.g., "a what?", "amen?").
  */
 export interface InterjectionMetadata {
   /** Stable ID for this interjection */
   id: NodeId;
   /** The interjection text */
   text: string;
-  /** Character offset within the quote content where interjection starts */
+  /** Character offset within the passage content where interjection starts */
   offsetStart: number;
-  /** Character offset within the quote content where interjection ends */
+  /** Character offset within the passage content where interjection ends */
   offsetEnd: number;
 }
 
 /**
- * Complete metadata for a Bible quote block.
+ * Complete metadata for a Bible passage.
  */
-export interface QuoteMetadata {
-  /** Reference information (optional for non-biblical quotes) */
+export interface PassageMetadata {
+  /** Reference information (optional for non-biblical passages) */
   reference?: BibleReferenceMetadata;
-  /** Detection metadata (optional for user-created quotes) */
-  detection?: QuoteDetectionMetadata;
-  /** Interjections found within this quote */
+  /** Detection metadata (optional for user-created passages) */
+  detection?: PassageDetectionMetadata;
+  /** Interjections found within this passage */
   interjections: InterjectionMetadata[];
-  /** Whether the quote has been manually verified by user */
+  /** Whether the passage has been manually verified by user */
   userVerified: boolean;
-  /** User notes about this quote */
+  /** User notes about this passage */
   userNotes?: string;
-  /** Whether this is a non-biblical quote (e.g., speaker's memorable statement) */
-  isNonBiblicalQuote?: boolean;
-  /** Character offset of quote start within parent paragraph */
+  /** Whether this is a non-biblical passage (e.g., speaker's memorable statement) */
+  isNonBiblicalPassage?: boolean;
+  /** Character offset of passage start within parent paragraph */
   startOffset?: number;
-  /** Character offset of quote end within parent paragraph */
+  /** Character offset of passage end within parent paragraph */
   endOffset?: number;
 }
 
 /**
- * Interjection node - inline element within a quote.
+ * Interjection node - inline element within a passage.
  */
 export interface InterjectionNode extends BaseNode {
   type: 'interjection';
   /** The interjection text */
   content: string;
-  /** Reference to parent quote's metadata interjection entry */
+  /** Reference to parent passage's metadata interjection entry */
   metadataId: NodeId;
 }
 
 /**
- * Quote block node - contains the Bible quote with full metadata.
+ * Passage node - contains a Bible passage with full metadata.
+ *
+ * This is for SEMANTIC content (scripture references), not visual formatting.
+ * For visual block quote formatting, use ParagraphNode with isBlockQuote=true.
  */
-export interface QuoteBlockNode extends BaseNode {
-  type: 'quote_block';
-  /** Rich metadata for this quote */
-  metadata: QuoteMetadata;
+export interface PassageNode extends BaseNode {
+  type: 'passage';
+  /** Rich metadata for this passage */
+  metadata: PassageMetadata;
   /** Child nodes (TextNode and InterjectionNode) */
   children: (TextNode | InterjectionNode)[];
 }
@@ -266,22 +283,26 @@ export interface DocumentRootNode extends BaseNode {
   biblePassage?: string;
   /** Speaker/Author (from audio metadata authors field) */
   speaker?: string;
-  /** Top-level children (paragraphs, quote blocks, headings, etc.) */
+  /** Top-level children (paragraphs and passages) */
   children: DocumentNode[];
 }
 
 /**
  * Union type of all document nodes.
+ *
+ * The AST has 5 semantic node types:
+ * - DocumentRootNode: Root container
+ * - ParagraphNode: Block content (with optional heading/list/blockQuote formatting)
+ * - TextNode: Leaf text with marks
+ * - PassageNode: Bible passage with metadata
+ * - InterjectionNode: Inline within passages
  */
 export type DocumentNode =
   | DocumentRootNode
   | ParagraphNode
   | TextNode
-  | QuoteBlockNode
-  | InterjectionNode
-  | HeadingNode
-  | ListNode
-  | ListItemNode;
+  | PassageNode
+  | InterjectionNode;
 
 // ============================================================================
 // EVENT TYPES
@@ -369,66 +390,70 @@ export interface ContentReplacedEvent extends BaseEvent {
   newChildren: DocumentNode[];
 }
 
-// --- Quote-Specific Events ---
+// --- Passage-Specific Events ---
 
-export interface QuoteCreatedEvent extends BaseEvent {
-  type: 'quote_created';
-  /** The quote node */
-  quote: QuoteBlockNode;
+export interface PassageCreatedEvent extends BaseEvent {
+  type: 'passage_created';
+  /** The passage node */
+  passage: PassageNode;
   /** Parent node ID */
   parentId: NodeId;
   /** Index in parent */
   index: number;
-  /** IDs of nodes that were replaced/wrapped by this quote */
+  /** IDs of nodes that were replaced/wrapped by this passage */
   replacedNodeIds: NodeId[];
 }
 
-export interface QuoteRemovedEvent extends BaseEvent {
-  type: 'quote_removed';
-  /** ID of the quote being removed */
-  quoteId: NodeId;
-  /** The removed quote (for undo) */
-  removedQuote: QuoteBlockNode;
-  /** Nodes that replace the quote (unwrapped content) */
+
+export interface PassageRemovedEvent extends BaseEvent {
+  type: 'passage_removed';
+  /** ID of the passage being removed */
+  passageId: NodeId;
+  /** The removed passage (for undo) */
+  removedPassage: PassageNode;
+  /** Nodes that replace the passage (unwrapped content) */
   replacementNodes: DocumentNode[];
 }
 
-export interface QuoteMetadataUpdatedEvent extends BaseEvent {
-  type: 'quote_metadata_updated';
-  /** ID of the quote */
-  quoteId: NodeId;
+
+export interface PassageMetadataUpdatedEvent extends BaseEvent {
+  type: 'passage_metadata_updated';
+  /** ID of the passage */
+  passageId: NodeId;
   /** Previous metadata (for undo) */
-  previousMetadata: QuoteMetadata;
+  previousMetadata: PassageMetadata;
   /** New metadata */
-  newMetadata: QuoteMetadata;
+  newMetadata: PassageMetadata;
   /** Specific fields that changed */
-  changedFields: (keyof QuoteMetadata)[];
+  changedFields: (keyof PassageMetadata)[];
 }
 
-export interface QuoteVerifiedEvent extends BaseEvent {
-  type: 'quote_verified';
-  /** ID of the quote */
-  quoteId: NodeId;
-  /** Whether the quote is now verified */
+
+export interface PassageVerifiedEvent extends BaseEvent {
+  type: 'passage_verified';
+  /** ID of the passage */
+  passageId: NodeId;
+  /** Whether the passage is now verified */
   verified: boolean;
   /** Optional user notes */
   notes?: string;
 }
 
+
 export interface InterjectionAddedEvent extends BaseEvent {
   type: 'interjection_added';
-  /** ID of the parent quote */
-  quoteId: NodeId;
+  /** ID of the parent passage */
+  passageId: NodeId;
   /** The interjection node */
   interjection: InterjectionNode;
-  /** Index in quote's children */
+  /** Index in passage's children */
   index: number;
 }
 
 export interface InterjectionRemovedEvent extends BaseEvent {
   type: 'interjection_removed';
-  /** ID of the parent quote */
-  quoteId: NodeId;
+  /** ID of the parent passage */
+  passageId: NodeId;
   /** ID of the removed interjection */
   interjectionId: NodeId;
   /** The removed interjection (for undo) */
@@ -437,10 +462,10 @@ export interface InterjectionRemovedEvent extends BaseEvent {
   previousIndex: number;
 }
 
-export interface QuoteBoundaryChangedEvent extends BaseEvent {
-  type: 'quote_boundary_changed';
-  /** ID of the quote */
-  quoteId: NodeId;
+export interface PassageBoundaryChangedEvent extends BaseEvent {
+  type: 'passage_boundary_changed';
+  /** ID of the passage */
+  passageId: NodeId;
   /** Previous boundaries */
   previousBoundaries: {
     startOffset: number;
@@ -451,9 +476,9 @@ export interface QuoteBoundaryChangedEvent extends BaseEvent {
     startOffset: number;
     endOffset: number;
   };
-  /** Previous quote content (for undo) */
+  /** Previous passage content (for undo) */
   previousContent: string;
-  /** New quote content */
+  /** New passage content */
   newContent: string;
   /** IDs of paragraphs that were merged (if any) */
   mergedParagraphIds?: NodeId[];
@@ -461,16 +486,17 @@ export interface QuoteBoundaryChangedEvent extends BaseEvent {
   mergedParagraphs?: ParagraphNode[];
 }
 
-export interface ParagraphsMergedForQuoteEvent extends BaseEvent {
-  type: 'paragraphs_merged_for_quote';
+
+export interface ParagraphsMergedForPassageEvent extends BaseEvent {
+  type: 'paragraphs_merged_for_passage';
   /** ID of the resulting merged paragraph */
   resultParagraphId: NodeId;
   /** IDs of all paragraphs that were merged */
   mergedParagraphIds: NodeId[];
   /** Snapshots of merged paragraphs (for undo) */
   mergedParagraphs: ParagraphNode[];
-  /** The quote that triggered this merge */
-  triggeringQuoteId?: NodeId;
+  /** The passage that triggered this merge */
+  triggeringPassageId?: NodeId;
 }
 
 // --- Structure Events ---
@@ -588,18 +614,18 @@ export type DocumentEvent =
   | NodeMovedEvent
   | TextChangedEvent
   | ContentReplacedEvent
-  | QuoteCreatedEvent
-  | QuoteRemovedEvent
-  | QuoteMetadataUpdatedEvent
-  | QuoteVerifiedEvent
-  | QuoteBoundaryChangedEvent
+  | PassageCreatedEvent
+  | PassageRemovedEvent
+  | PassageMetadataUpdatedEvent
+  | PassageVerifiedEvent
+  | PassageBoundaryChangedEvent
   | InterjectionAddedEvent
   | InterjectionRemovedEvent
   | NodesJoinedEvent
   | NodeSplitEvent
   | ParagraphMergedEvent
   | ParagraphSplitEvent
-  | ParagraphsMergedForQuoteEvent
+  | ParagraphsMergedForPassageEvent
   | DocumentCreatedEvent
   | DocumentMetadataUpdatedEvent
   | DocumentImportedEvent
@@ -623,16 +649,17 @@ export interface NodeIndex {
 }
 
 /**
- * Index for fast quote lookups by reference.
+ * Index for fast passage lookups by reference.
  */
-export interface QuoteIndex {
-  /** Map from normalized reference string to quote node IDs */
+export interface PassageIndex {
+  /** Map from normalized reference string to passage node IDs */
   byReference: { [reference: string]: NodeId[] };
-  /** Map from book name to quote node IDs */
+  /** Map from book name to passage node IDs */
   byBook: { [book: string]: NodeId[] };
-  /** All quote node IDs in document order */
+  /** All passage node IDs in document order */
   all: NodeId[];
 }
+
 
 /**
  * Extracted references for backward compatibility.
@@ -660,8 +687,8 @@ export interface DocumentState {
   redoStack: EventId[];
   /** Node index for fast lookups */
   nodeIndex: NodeIndex;
-  /** Quote index for fast lookups */
-  quoteIndex: QuoteIndex;
+  /** Passage index for fast lookups */
+  passageIndex: PassageIndex;
   /** Extracted references (for backward compatibility) */
   extracted: ExtractedReferences;
   /** Last modified timestamp (ISO 8601) */
@@ -689,9 +716,9 @@ export interface CreateDocumentOptions {
 }
 
 /**
- * Options for finding quote boundaries.
+ * Options for finding passage boundaries.
  */
-export interface QuoteBoundaryOptions {
+export interface PassageBoundaryOptions {
   /** Minimum confidence threshold */
   minConfidence?: number;
   /** Whether to auto-detect translation */
@@ -699,6 +726,7 @@ export interface QuoteBoundaryOptions {
   /** Preferred translation if not auto-detecting */
   preferredTranslation?: BibleTranslation;
 }
+
 
 /**
  * Result from Python AST builder (serialized).
@@ -712,8 +740,8 @@ export interface ASTBuilderResult {
     stageTimes: { [stage: string]: number };
     /** Total processing time (ms) */
     totalTime: number;
-    /** Number of quotes detected */
-    quoteCount: number;
+    /** Number of passages detected */
+    passageCount: number;
     /** Number of paragraphs */
     paragraphCount: number;
     /** Number of interjections */
@@ -740,10 +768,10 @@ export function isParagraphNode(node: DocumentNode): node is ParagraphNode {
 }
 
 /**
- * Type guard for QuoteBlockNode.
+ * Type guard for PassageNode.
  */
-export function isQuoteBlockNode(node: DocumentNode): node is QuoteBlockNode {
-  return node.type === 'quote_block';
+export function isPassageNode(node: DocumentNode): node is PassageNode {
+  return node.type === 'passage';
 }
 
 /**
@@ -754,20 +782,6 @@ export function isInterjectionNode(node: DocumentNode): node is InterjectionNode
 }
 
 /**
- * Type guard for HeadingNode.
- */
-export function isHeadingNode(node: DocumentNode): node is HeadingNode {
-  return node.type === 'heading';
-}
-
-/**
- * Type guard for ListNode.
- */
-export function isListNode(node: DocumentNode): node is ListNode {
-  return node.type === 'list';
-}
-
-/**
  * Type guard for DocumentRootNode.
  */
 export function isDocumentRootNode(node: DocumentNode): node is DocumentRootNode {
@@ -775,11 +789,33 @@ export function isDocumentRootNode(node: DocumentNode): node is DocumentRootNode
 }
 
 /**
+ * Check if a paragraph has heading formatting.
+ */
+export function isHeadingParagraph(node: DocumentNode): node is ParagraphNode & { headingLevel: 1 | 2 | 3 } {
+  return isParagraphNode(node) && node.headingLevel !== undefined;
+}
+
+/**
+ * Check if a paragraph is a list item.
+ */
+export function isListItemParagraph(node: DocumentNode): node is ParagraphNode & { listStyle: 'bullet' | 'ordered' } {
+  return isParagraphNode(node) && node.listStyle !== undefined;
+}
+
+/**
+ * Check if a paragraph has block quote formatting.
+ * This is visual formatting only, NOT a Bible passage.
+ */
+export function isBlockQuoteParagraph(node: DocumentNode): node is ParagraphNode & { isBlockQuote: true } {
+  return isParagraphNode(node) && node.isBlockQuote === true;
+}
+
+/**
  * Check if a node has children.
  */
 export function hasChildren(
   node: DocumentNode
-): node is DocumentRootNode | ParagraphNode | QuoteBlockNode | HeadingNode | ListNode | ListItemNode {
+): node is DocumentRootNode | ParagraphNode | PassageNode {
   return 'children' in node && Array.isArray(node.children);
 }
 
@@ -788,7 +824,7 @@ export function hasChildren(
 // ============================================================================
 
 /**
- * Confidence thresholds for quote detection.
+ * Confidence thresholds for passage detection.
  */
 export const CONFIDENCE_THRESHOLDS = {
   HIGH: 0.8,

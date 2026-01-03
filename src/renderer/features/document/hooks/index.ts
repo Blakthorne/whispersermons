@@ -6,8 +6,8 @@
 export { useDocument, useDocumentSafe } from './useDocument';
 export type { UseDocumentResult } from './useDocument';
 
-export { useQuotes } from './useQuotes';
-export type { UseQuotesResult, EnrichedQuote, QuoteFilterOptions } from './useQuotes';
+export { usePassages } from './usePassages';
+export type { UsePassagesResult, EnrichedPassage, PassageFilterOptions } from './usePassages';
 
 export { useNode, useNodeTraversal } from './useNode';
 export type { UseNodeResult } from './useNode';

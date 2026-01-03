@@ -7,6 +7,9 @@
  * - HTML conversion
  * - Round-trip conversions
  * - Metadata preservation
+ *
+ * AST Node Types: document, paragraph, text, passage, interjection
+ * Headings are paragraphs with headingLevel (1-3)
  */
 
 import { describe, it, expect } from 'vitest';
@@ -17,7 +20,7 @@ import {
   htmlToAst,
   type TipTapDocument,
 } from '../bridge/astTipTapConverter';
-import type { DocumentRootNode, QuoteBlockNode, ParagraphNode, TextNode, HeadingNode, NodeId } from '../../../../shared/documentModel';
+import type { DocumentRootNode, PassageNode, ParagraphNode, TextNode, NodeId } from '../../../../shared/documentModel';
 
 // ============================================================================
 // TEST HELPER FUNCTIONS (Local Definitions)
@@ -43,17 +46,31 @@ function createParagraphNode(id: string, children: TextNode[]): ParagraphNode {
   };
 }
 
-function createQuoteBlockNode(
+/**
+ * Create a heading-styled paragraph (paragraph with headingLevel).
+ */
+function createHeadingParagraph(id: string, content: string, level: 1 | 2 | 3): ParagraphNode & { headingLevel: 1 | 2 | 3 } {
+  return {
+    id: id as NodeId,
+    type: 'paragraph',
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    headingLevel: level,
+    children: [createTextNode(`${id}-text`, content)],
+  };
+}
+
+function createPassageNode(
   id: string,
   text: string,
   reference: string,
   book: string,
   confidence: number = 0.95
-): QuoteBlockNode {
+): PassageNode {
   const textNode = createTextNode(`${id}-text`, text);
   return {
     id: id as NodeId,
-    type: 'quote_block',
+    type: 'passage',
     version: 1,
     updatedAt: new Date().toISOString(),
     metadata: {
@@ -80,8 +97,11 @@ function createQuoteBlockNode(
   };
 }
 
+// Backwards compatibility alias
+const createPassageBlockNode = createPassageNode;
+
 function createDocumentRootNode(
-  children: (ParagraphNode | QuoteBlockNode | HeadingNode)[],
+  children: (ParagraphNode | PassageNode)[],
   options: { title?: string; biblePassage?: string } = {}
 ): DocumentRootNode {
   return {
@@ -107,20 +127,20 @@ function createSimpleDocumentRoot(): DocumentRootNode {
   });
 }
 
-function createDocumentWithQuote(): DocumentRootNode {
+function createDocumentWithPassage(): DocumentRootNode {
   const textNode = createTextNode('text-1', 'Some paragraph text.');
   const paragraphNode = createParagraphNode('para-1', [textNode]);
-  const quoteNode = createQuoteBlockNode(
-    'quote-1',
+  const passageNode = createPassageBlockNode(
+    'passage-1',
     'For God so loved the world...',
     'John 3:16',
     'John',
     0.95
   );
   // Set userVerified to true for this specific test
-  quoteNode.metadata.userVerified = true;
-  return createDocumentRootNode([paragraphNode, quoteNode], {
-    title: 'Document with Quote',
+  passageNode.metadata.userVerified = true;
+  return createDocumentRootNode([paragraphNode, passageNode], {
+    title: 'Document with Passage',
     biblePassage: 'John 3:16',
   });
 }
@@ -200,7 +220,7 @@ describe('AST to TipTap Conversion', () => {
   });
 
   it('should include Bible passage', () => {
-    const root = createDocumentWithQuote();
+    const root = createDocumentWithPassage();
     const result = astToTipTapJson(root);
 
     expect(result.success).toBe(true);
@@ -220,7 +240,7 @@ describe('AST to TipTap Conversion', () => {
   });
 
   it('should convert blockquote with metadata', () => {
-    const root = createDocumentWithQuote();
+    const root = createDocumentWithPassage();
     const result = astToTipTapJson(root);
 
     expect(result.success).toBe(true);
@@ -251,8 +271,19 @@ describe('AST to TipTap Conversion', () => {
     expect(paragraph?.attrs?.nodeId).toBeUndefined();
   });
 
+  it('should convert heading paragraph to TipTap heading', () => {
+    const headingPara = createHeadingParagraph('heading-1', 'Section Title', 2);
+    const root = createDocumentRootNode([headingPara], {});
+    const result = astToTipTapJson(root);
+
+    expect(result.success).toBe(true);
+    const h2 = result.data?.content.find((n) => n.type === 'heading' && n.attrs?.level === 2);
+    expect(h2).toBeDefined();
+    expect(h2?.content?.[0]?.text).toBe('Section Title');
+  });
+
   it('should omit metadata when option disabled', () => {
-    const root = createDocumentWithQuote();
+    const root = createDocumentWithPassage();
     const result = astToTipTapJson(root, { includeMetadata: false });
 
     expect(result.success).toBe(true);
@@ -294,7 +325,7 @@ describe('TipTap to AST Conversion', () => {
   });
 
   it('should NOT extract title from non-centered H1 (user-created)', () => {
-    // User-created H1s don't have textAlign: 'center', so they should become HeadingNodes
+    // User-created H1s don't have textAlign: 'center', so they should become paragraphs with headingLevel
     const doc: TipTapDocument = {
       type: 'doc',
       content: [
@@ -314,11 +345,11 @@ describe('TipTap to AST Conversion', () => {
     expect(result.success).toBe(true);
     // Title should NOT be extracted from non-centered H1
     expect(result.data?.title).toBeUndefined();
-    // The H1 should become a HeadingNode in children instead
+    // The H1 should become a paragraph with headingLevel in children instead
     expect(result.data?.children.length).toBe(2);
-    const heading = result.data?.children[0] as HeadingNode;
-    expect(heading.type).toBe('heading');
-    expect(heading.level).toBe(1);
+    const heading = result.data?.children[0] as ParagraphNode & { headingLevel: 1 | 2 | 3 };
+    expect(heading.type).toBe('paragraph');
+    expect(heading.headingLevel).toBe(1);
     expect((heading.children[0] as TextNode).content).toBe('User Created Heading');
   });
 
@@ -345,11 +376,11 @@ describe('TipTap to AST Conversion', () => {
     const result = tipTapJsonToAst(doc);
 
     expect(result.success).toBe(true);
-    const quote = result.data?.children.find((n) => n.type === 'quote_block') as QuoteBlockNode;
-    expect(quote).toBeDefined();
-    expect(quote.metadata.reference?.book).toBe('John');
-    expect(quote.metadata.reference?.normalizedReference).toBe('John 3:16');
-    expect(quote.metadata.detection?.confidence).toBe(0.9);
+    const passage = result.data?.children.find((n) => n.type === 'passage') as PassageNode;
+    expect(passage).toBeDefined();
+    expect(passage.metadata.reference?.book).toBe('John');
+    expect(passage.metadata.reference?.normalizedReference).toBe('John 3:16');
+    expect(passage.metadata.detection?.confidence).toBe(0.9);
   });
 
   it('should preserve node IDs from attrs', () => {
@@ -401,8 +432,8 @@ describe('TipTap to AST Conversion', () => {
     const result = tipTapJsonToAst(doc);
 
     expect(result.success).toBe(true);
-    const quote = result.data?.children[0] as QuoteBlockNode;
-    expect(quote.type).toBe('quote_block');
+    const passage = result.data?.children[0] as PassageNode;
+    expect(passage.type).toBe('passage');
   });
 
   it('should preserve formatting marks (bold, italic) on text nodes', () => {
@@ -601,7 +632,7 @@ describe('AST to HTML Conversion', () => {
   });
 
   it('should include Bible passage', () => {
-    const root = createDocumentWithQuote();
+    const root = createDocumentWithPassage();
     const html = astToHtml(root);
 
     expect(html).toContain('Primary Reference');
@@ -609,7 +640,7 @@ describe('AST to HTML Conversion', () => {
   });
 
   it('should convert blockquote with data attributes', () => {
-    const root = createDocumentWithQuote();
+    const root = createDocumentWithPassage();
     const html = astToHtml(root);
 
     expect(html).toContain('<div');
@@ -628,7 +659,7 @@ describe('AST to HTML Conversion', () => {
   });
 
   it('should add separator after metadata', () => {
-    const root = createDocumentWithQuote();
+    const root = createDocumentWithPassage();
     const html = astToHtml(root);
 
     expect(html).toContain('<hr');
@@ -666,8 +697,8 @@ describe('HTML to AST Conversion', () => {
     const result = htmlToAst(html);
 
     expect(result.success).toBe(true);
-    const quote = result.data?.children.find((n) => n.type === 'quote_block') as QuoteBlockNode;
-    expect(quote).toBeDefined();
+    const passage = result.data?.children.find((n) => n.type === 'passage') as PassageNode;
+    expect(passage).toBeDefined();
   });
 });
 
@@ -697,22 +728,22 @@ describe('Round-Trip Conversions', () => {
     expect(resultText).toBe(originalText);
   });
 
-  it('should preserve quote metadata through round-trip', () => {
-    const original = createDocumentWithQuote();
+  it('should preserve passage metadata through round-trip', () => {
+    const original = createDocumentWithPassage();
     const tipTapResult = astToTipTapJson(original);
     expect(tipTapResult.success).toBe(true);
 
     const astResult = tipTapJsonToAst(tipTapResult.data!);
     expect(astResult.success).toBe(true);
 
-    const originalQuote = original.children.find((n) => n.type === 'quote_block') as QuoteBlockNode;
-    const resultQuote = astResult.data?.children.find((n) => n.type === 'quote_block') as QuoteBlockNode;
+    const originalPassage = original.children.find((n) => n.type === 'passage') as PassageNode;
+    const resultPassage = astResult.data?.children.find((n) => n.type === 'passage') as PassageNode;
 
-    expect(resultQuote.metadata.reference?.book).toBe(originalQuote.metadata.reference?.book);
-    expect(resultQuote.metadata.reference?.normalizedReference).toBe(
-      originalQuote.metadata.reference?.normalizedReference
+    expect(resultPassage.metadata.reference?.book).toBe(originalPassage.metadata.reference?.book);
+    expect(resultPassage.metadata.reference?.normalizedReference).toBe(
+      originalPassage.metadata.reference?.normalizedReference
     );
-    expect(resultQuote.metadata.userVerified).toBe(originalQuote.metadata.userVerified);
+    expect(resultPassage.metadata.userVerified).toBe(originalPassage.metadata.userVerified);
   });
 
   it('should preserve content through AST → HTML → AST', () => {
@@ -725,7 +756,7 @@ describe('Round-Trip Conversions', () => {
   });
 
   it('should handle multiple round-trips', () => {
-    let root = createDocumentWithQuote();
+    let root = createDocumentWithPassage();
 
     for (let i = 0; i < 3; i++) {
       const tipTapResult = astToTipTapJson(root);
@@ -737,11 +768,11 @@ describe('Round-Trip Conversions', () => {
     }
 
     // Verify data still intact
-    expect(root.title).toBe('Document with Quote');
+    expect(root.title).toBe('Document with Passage');
     expect(root.biblePassage).toBe('John 3:16');
-    const quote = root.children.find((n) => n.type === 'quote_block') as QuoteBlockNode;
-    expect(quote).toBeDefined();
-    expect(quote.metadata.reference?.book).toBe('John');
+    const passage = root.children.find((n) => n.type === 'passage') as PassageNode;
+    expect(passage).toBeDefined();
+    expect(passage.metadata.reference?.book).toBe('John');
   });
 });
 
@@ -786,12 +817,12 @@ describe('Edge Cases', () => {
   });
 
   it('should handle nested structures', () => {
-    // Create a document with multiple paragraphs and quotes
+    // Create a document with multiple paragraphs and passages
     const para1 = createParagraphNode('para-1', [createTextNode('text-1', 'Paragraph 1')]);
-    const quote1 = createQuoteBlockNode('quote-1', 'Quote 1', 'John 1:1', 'John', 0.9);
+    const passage1 = createPassageBlockNode('passage-1', 'Passage 1', 'John 1:1', 'John', 0.9);
     const para2 = createParagraphNode('para-2', [createTextNode('text-2', 'Paragraph 2')]);
 
-    const root = createDocumentRootNode([para1, quote1, para2], { title: 'Mixed Content' });
+    const root = createDocumentRootNode([para1, passage1, para2], { title: 'Mixed Content' });
 
     const result = astToTipTapJson(root);
     expect(result.success).toBe(true);
@@ -824,14 +855,14 @@ describe('Edge Cases', () => {
     expect(paragraph.children.length).toBeGreaterThan(0); // Should have empty text node
   });
 
-  it('should handle empty heading in AST to TipTap', () => {
-    // Create a heading with no children (edge case)
-    const heading: HeadingNode = {
+  it('should handle empty heading paragraph in AST to TipTap', () => {
+    // Create a heading paragraph with no children (edge case)
+    const heading: ParagraphNode & { headingLevel: 1 | 2 | 3 } = {
       id: 'heading-empty' as NodeId,
-      type: 'heading',
+      type: 'paragraph',
       version: 1,
       updatedAt: new Date().toISOString(),
-      level: 2,
+      headingLevel: 2,
       children: [],
     };
     const root = createDocumentRootNode([heading], {});

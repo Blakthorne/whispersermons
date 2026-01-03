@@ -66,8 +66,8 @@ function StatisticsBar(): React.JSX.Element {
         <span> paragraphs</span>
       </span>
       <span className="document-stat">
-        <span className="document-stat-value">{statistics.quoteCount}</span>
-        <span> quotes</span>
+        <span className="document-stat-value">{statistics.passageCount}</span>
+        <span> passages</span>
       </span>
       {statistics.interjectionCount > 0 && (
         <span className="document-stat">

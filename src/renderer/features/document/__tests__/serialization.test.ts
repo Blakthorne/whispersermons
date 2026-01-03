@@ -17,7 +17,7 @@ import {
   compactDeserialize,
   validateDocumentState,
   buildNodeIndex,
-  buildQuoteIndex,
+  buildPassageIndex,
   buildExtracted,
 } from '../serialization/stateSerializer';
 import {
@@ -29,7 +29,7 @@ import {
   filterEventsByType,
   getLatestVersion,
 } from '../serialization/eventSerializer';
-import type { DocumentState, DocumentEvent, NodeCreatedEvent, EventId, DocumentRootNode, ParagraphNode, TextNode, QuoteBlockNode, NodeId } from '../../../../shared/documentModel';
+import type { DocumentState, DocumentEvent, NodeCreatedEvent, EventId, DocumentRootNode, ParagraphNode, TextNode, PassageNode, NodeId } from '../../../../shared/documentModel';
 
 // ============================================================================
 // TEST HELPER FUNCTIONS (Local Definitions)
@@ -55,17 +55,17 @@ function createParagraphNode(id: string, children: TextNode[]): ParagraphNode {
   };
 }
 
-function createQuoteBlockNode(
+function createPassageNode(
   id: string,
   text: string,
   reference: string,
   book: string,
   confidence: number = 0.95
-): QuoteBlockNode {
+): PassageNode {
   const textNode = createTextNode(`${id}-text`, text);
   return {
     id: id as NodeId,
-    type: 'quote_block',
+    type: 'passage',
     version: 1,
     updatedAt: new Date().toISOString(),
     metadata: {
@@ -93,7 +93,7 @@ function createQuoteBlockNode(
 }
 
 function createDocumentRootNode(
-  children: (ParagraphNode | QuoteBlockNode)[],
+  children: (ParagraphNode | PassageNode)[],
   options: { title?: string; biblePassage?: string } = {}
 ): DocumentRootNode {
   return {
@@ -110,33 +110,33 @@ function createDocumentRootNode(
 function createDocumentState(root: DocumentRootNode): DocumentState {
   const now = new Date().toISOString();
   const nodeIndex: DocumentState['nodeIndex'] = {};
-  const quoteIndex: DocumentState['quoteIndex'] = { byReference: {}, byBook: {}, all: [] };
+  const passageIndex: DocumentState['passageIndex'] = { byReference: {}, byBook: {}, all: [] };
 
   // Build indexes
-  function indexNode(node: DocumentRootNode | ParagraphNode | QuoteBlockNode | TextNode, parentId: NodeId | null, path: NodeId[]) {
+  function indexNode(node: DocumentRootNode | ParagraphNode | PassageNode | TextNode, parentId: NodeId | null, path: NodeId[]) {
     nodeIndex[node.id] = { node, parentId, path };
 
-    if (node.type === 'quote_block') {
-      const quote = node as QuoteBlockNode;
-      const ref = quote.metadata.reference?.normalizedReference ?? '';
-      const book = quote.metadata.reference?.book ?? '';
+    if (node.type === 'passage') {
+      const passage = node as PassageNode;
+      const ref = passage.metadata.reference?.normalizedReference ?? '';
+      const book = passage.metadata.reference?.book ?? '';
 
-      if (!quoteIndex.byReference[ref]) {
-        quoteIndex.byReference[ref] = [];
+      if (!passageIndex.byReference[ref]) {
+        passageIndex.byReference[ref] = [];
       }
-      quoteIndex.byReference[ref].push(quote.id);
+      passageIndex.byReference[ref].push(passage.id);
 
-      if (!quoteIndex.byBook[book]) {
-        quoteIndex.byBook[book] = [];
+      if (!passageIndex.byBook[book]) {
+        passageIndex.byBook[book] = [];
       }
-      quoteIndex.byBook[book].push(quote.id);
+      passageIndex.byBook[book].push(passage.id);
 
-      quoteIndex.all.push(quote.id);
+      passageIndex.all.push(passage.id);
     }
 
     if ('children' in node && Array.isArray(node.children)) {
       node.children.forEach((child) => {
-        indexNode(child as DocumentRootNode | ParagraphNode | QuoteBlockNode | TextNode, node.id, [...path, node.id]);
+        indexNode(child as DocumentRootNode | ParagraphNode | PassageNode | TextNode, node.id, [...path, node.id]);
       });
     }
   }
@@ -150,8 +150,8 @@ function createDocumentState(root: DocumentRootNode): DocumentState {
     undoStack: [],
     redoStack: [],
     nodeIndex,
-    quoteIndex,
-    extracted: { references: quoteIndex.all.length > 0 ? ['John 3:16'] : [], tags: [] },
+    passageIndex,
+    extracted: { references: passageIndex.all.length > 0 ? ['John 3:16'] : [], tags: [] },
     lastModified: now,
     createdAt: now,
   };
@@ -162,17 +162,17 @@ function createDocumentState(root: DocumentRootNode): DocumentState {
 // ============================================================================
 
 function createTestDocumentState(): DocumentState {
-  // Create a simple document with one paragraph and one quote
+  // Create a simple document with one paragraph and one passage
   const textNode = createTextNode('text-1', 'Hello, world!');
   const paragraphNode = createParagraphNode('para-1', [textNode]);
-  const quoteNode = createQuoteBlockNode(
-    'quote-1',
+  const passageNode = createPassageNode(
+    'passage-1',
     'For God so loved the world...',
     'John 3:16',
     'John',
     0.95
   );
-  const rootNode = createDocumentRootNode([paragraphNode, quoteNode], {
+  const rootNode = createDocumentRootNode([paragraphNode, passageNode], {
     title: 'Test Document',
     biblePassage: 'John 3:16',
   });
@@ -297,7 +297,7 @@ describe('Compact State Serialization', () => {
 
     // Verify indexes were rebuilt
     expect(Object.keys(result.state?.nodeIndex || {}).length).toBeGreaterThan(0);
-    expect(result.state?.quoteIndex.all.length).toBeGreaterThan(0);
+    expect(result.state?.passageIndex.all.length).toBeGreaterThan(0);
   });
 
   it('should produce smaller output than full serialization', () => {
@@ -330,19 +330,19 @@ describe('Compact State Serialization', () => {
     }
   });
 
-  it('should rebuild quoteIndex correctly', () => {
+  it('should rebuild passageIndex correctly', () => {
     const state = createTestDocumentState();
     const json = compactSerialize(state);
     const result = compactDeserialize(json);
 
     expect(result.success).toBe(true);
-    const quoteIndex = result.state?.quoteIndex;
+    const passageIndex = result.state?.passageIndex;
 
-    expect(quoteIndex?.all.length).toBe(1);
-    expect(quoteIndex?.byBook['John']).toBeDefined();
-    expect(quoteIndex?.byBook['John']!.length).toBe(1);
-    expect(quoteIndex?.byReference['John 3:16']).toBeDefined();
-    expect(quoteIndex?.byReference['John 3:16']!.length).toBe(1);
+    expect(passageIndex?.all.length).toBe(1);
+    expect(passageIndex?.byBook['John']).toBeDefined();
+    expect(passageIndex?.byBook['John']!.length).toBe(1);
+    expect(passageIndex?.byReference['John 3:16']).toBeDefined();
+    expect(passageIndex?.byReference['John 3:16']!.length).toBe(1);
   });
 
   it('should rebuild extracted references correctly', () => {
@@ -374,7 +374,7 @@ describe('Compact State Serialization', () => {
 
     expect(result.success).toBe(true);
     expect(result.state?.root.children.length).toBe(0);
-    expect(result.state?.quoteIndex.all.length).toBe(0);
+    expect(result.state?.passageIndex.all.length).toBe(0);
   });
 });
 
@@ -421,41 +421,41 @@ describe('Index Building', () => {
     });
   });
 
-  describe('buildQuoteIndex', () => {
-    it('should index quotes by reference', () => {
+  describe('buildPassageIndex', () => {
+    it('should index passages by reference', () => {
       const state = createTestDocumentState();
       const nodeIndex = buildNodeIndex(state.root);
-      const quoteIndex = buildQuoteIndex(state.root, nodeIndex);
+      const passageIndex = buildPassageIndex(state.root, nodeIndex);
 
-      expect(quoteIndex.byReference['John 3:16']).toBeDefined();
-      expect(quoteIndex.byReference['John 3:16']!.length).toBe(1);
+      expect(passageIndex.byReference['John 3:16']).toBeDefined();
+      expect(passageIndex.byReference['John 3:16']!.length).toBe(1);
     });
 
-    it('should index quotes by book', () => {
+    it('should index passages by book', () => {
       const state = createTestDocumentState();
       const nodeIndex = buildNodeIndex(state.root);
-      const quoteIndex = buildQuoteIndex(state.root, nodeIndex);
+      const passageIndex = buildPassageIndex(state.root, nodeIndex);
 
-      expect(quoteIndex.byBook['John']).toBeDefined();
-      expect(quoteIndex.byBook['John']!.length).toBe(1);
+      expect(passageIndex.byBook['John']).toBeDefined();
+      expect(passageIndex.byBook['John']!.length).toBe(1);
     });
 
-    it('should maintain all quotes list', () => {
+    it('should maintain all passages list', () => {
       const state = createTestDocumentState();
       const nodeIndex = buildNodeIndex(state.root);
-      const quoteIndex = buildQuoteIndex(state.root, nodeIndex);
+      const passageIndex = buildPassageIndex(state.root, nodeIndex);
 
-      expect(quoteIndex.all.length).toBe(1);
+      expect(passageIndex.all.length).toBe(1);
     });
 
     it('should handle empty document', () => {
       const rootNode = createDocumentRootNode([], {});
       const nodeIndex = buildNodeIndex(rootNode);
-      const quoteIndex = buildQuoteIndex(rootNode, nodeIndex);
+      const passageIndex = buildPassageIndex(rootNode, nodeIndex);
 
-      expect(quoteIndex.all.length).toBe(0);
-      expect(Object.keys(quoteIndex.byReference).length).toBe(0);
-      expect(Object.keys(quoteIndex.byBook).length).toBe(0);
+      expect(passageIndex.all.length).toBe(0);
+      expect(Object.keys(passageIndex.byReference).length).toBe(0);
+      expect(Object.keys(passageIndex.byBook).length).toBe(0);
     });
   });
 
@@ -531,7 +531,7 @@ describe('Validation', () => {
     const result = validateDocumentState(state);
 
     expect(result.warnings.some((w) => w.includes('nodeIndex'))).toBe(true);
-    expect(result.warnings.some((w) => w.includes('quoteIndex'))).toBe(true);
+    expect(result.warnings.some((w) => w.includes('passageIndex'))).toBe(true);
   });
 });
 
@@ -684,26 +684,26 @@ describe('Serialization Round-Trips', () => {
     expect(result.state?.root.children.length).toBe(original.root.children.length);
   });
 
-  it('should preserve quote metadata through round-trip', () => {
+  it('should preserve passage metadata through round-trip', () => {
     const original = createTestDocumentState();
     const json = compactSerialize(original);
     const result = compactDeserialize(json);
 
     expect(result.success).toBe(true);
 
-    // Find the quote node
-    const quoteId = result.state?.quoteIndex.all[0];
-    expect(quoteId).toBeDefined();
+    // Find the passage node
+    const passageId = result.state?.passageIndex.all[0];
+    expect(passageId).toBeDefined();
 
-    const quoteEntry = result.state?.nodeIndex[quoteId!];
-    expect(quoteEntry).toBeDefined();
+    const passageEntry = result.state?.nodeIndex[passageId!];
+    expect(passageEntry).toBeDefined();
 
-    const quoteNode = quoteEntry?.node;
-    expect(quoteNode?.type).toBe('quote_block');
-    if (quoteNode?.type === 'quote_block') {
-      expect(quoteNode.metadata.reference?.book).toBe('John');
-      expect(quoteNode.metadata.reference?.normalizedReference).toBe('John 3:16');
-      expect(quoteNode.metadata.detection?.confidence).toBe(0.95);
+    const passageNode = passageEntry?.node;
+    expect(passageNode?.type).toBe('passage');
+    if (passageNode?.type === 'passage') {
+      expect(passageNode.metadata.reference?.book).toBe('John');
+      expect(passageNode.metadata.reference?.normalizedReference).toBe('John 3:16');
+      expect(passageNode.metadata.detection?.confidence).toBe(0.95);
     }
   });
 
@@ -718,6 +718,6 @@ describe('Serialization Round-Trips', () => {
     }
 
     expect(state.root.title).toBe('Test Document');
-    expect(state.quoteIndex.all.length).toBe(1);
+    expect(state.passageIndex.all.length).toBe(1);
   });
 });

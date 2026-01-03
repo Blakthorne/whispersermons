@@ -8,7 +8,7 @@ import type { DocumentState, DocumentRootNode } from '../../shared/documentModel
 import { astToHtml } from '../features/document/bridge/astTipTapConverter';
 import {
   buildNodeIndex,
-  buildQuoteIndex,
+  buildPassageIndex,
   buildExtracted,
 } from '../features/document/serialization/stateSerializer';
 import { createDocumentMutator } from '../features/document/DocumentMutator';
@@ -253,7 +253,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
         // Clear redo stack when new change is made
         redoStack: [],
         nodeIndex,
-        quoteIndex: buildQuoteIndex(stableRoot, nodeIndex),
+        passageIndex: buildPassageIndex(stableRoot, nodeIndex),
         extracted: buildExtracted(stableRoot, nodeIndex),
         lastModified: new Date().toISOString(),
         createdAt: existingState?.createdAt || new Date().toISOString(),
@@ -283,7 +283,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
         undoStack: existingState?.undoStack || [],
         redoStack: existingState?.redoStack || [],
         nodeIndex,
-        quoteIndex: buildQuoteIndex(newRoot, nodeIndex),
+        passageIndex: buildPassageIndex(newRoot, nodeIndex),
         extracted: buildExtracted(newRoot, nodeIndex),
         lastModified: new Date().toISOString(),
         createdAt: existingState?.createdAt || new Date().toISOString(),

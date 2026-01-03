@@ -14,11 +14,11 @@ export {
   // Content events
   createTextChangedEvent,
   createContentReplacedEvent,
-  // Quote-specific events
-  createQuoteCreatedEvent,
-  createQuoteRemovedEvent,
-  createQuoteMetadataUpdatedEvent,
-  createQuoteVerifiedEvent,
+  // Passage-specific events (Bible passages)
+  createPassageCreatedEvent,
+  createPassageRemovedEvent,
+  createPassageMetadataUpdatedEvent,
+  createPassageVerifiedEvent,
   createInterjectionAddedEvent,
   createInterjectionRemovedEvent,
   // Structure events

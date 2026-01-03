@@ -191,7 +191,7 @@ export function UnifiedEditorActions({
         {/* Save As dropdown */}
         <div className="save-dropdown">
           <Button variant="primary" size="sm" disabled={!hasContent} title="Save Document">
-            Save As...
+            Export
           </Button>
           <div className="save-menu">
             <button onClick={() => handleSave('txt')} type="button">

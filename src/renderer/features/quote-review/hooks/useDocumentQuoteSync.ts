@@ -12,7 +12,7 @@ import { useQuoteReview } from '../../../contexts';
 import type {
   DocumentRootNode,
   NodeId,
-  QuoteBlockNode,
+  PassageNode,
   ParagraphNode,
   DocumentNode,
 } from '../../../../shared/documentModel';
@@ -40,19 +40,19 @@ interface DocumentQuoteSyncActions {
   updateQuoteBoundaries: (quoteId: NodeId, startOffset: number, endOffset: number) => void;
   /** Get paragraph by ID */
   getParagraph: (paragraphId: NodeId) => ParagraphNode | null;
-  /** Get quote node by ID */
-  getQuoteNode: (quoteId: NodeId) => QuoteBlockNode | null;
+  /** Get passage node by ID */
+  getQuoteNode: (quoteId: NodeId) => PassageNode | null;
 }
 
 /**
  * Helper to extract text content from a node
  */
-function extractTextFromNode(node: QuoteBlockNode | ParagraphNode): string {
+function extractTextFromNode(node: PassageNode | ParagraphNode): string {
   if ('children' in node && Array.isArray(node.children)) {
     return node.children
       .map((child) => {
         if ('content' in child) return child.content;
-        if ('children' in child) return extractTextFromNode(child as unknown as QuoteBlockNode);
+        if ('children' in child) return extractTextFromNode(child as unknown as PassageNode);
         return '';
       })
       .join('');
@@ -61,10 +61,10 @@ function extractTextFromNode(node: QuoteBlockNode | ParagraphNode): string {
 }
 
 /**
- * Type guard for QuoteBlockNode
+ * Type guard for PassageNode
  */
-function isQuoteBlockNode(node: DocumentNode): node is QuoteBlockNode {
-  return node.type === 'quote_block';
+function isPassageNode(node: DocumentNode): node is PassageNode {
+  return node.type === 'passage';
 }
 
 /**
@@ -75,15 +75,15 @@ function isParagraphNode(node: DocumentNode): node is ParagraphNode {
 }
 
 /**
- * Helper to find all quote nodes in document
+ * Helper to find all passage nodes in document
  */
-function findQuoteNodes(document: DocumentRootNode): QuoteBlockNode[] {
-  const quotes: QuoteBlockNode[] = [];
+function findPassageNodes(document: DocumentRootNode): PassageNode[] {
+  const passages: PassageNode[] = [];
 
   function traverse(children: DocumentNode[]) {
     for (const child of children) {
-      if (isQuoteBlockNode(child)) {
-        quotes.push(child);
+      if (isPassageNode(child)) {
+        passages.push(child);
       } else if ('children' in child && Array.isArray(child.children)) {
         traverse(child.children as DocumentNode[]);
       }
@@ -91,7 +91,7 @@ function findQuoteNodes(document: DocumentRootNode): QuoteBlockNode[] {
   }
 
   traverse(document.children);
-  return quotes;
+  return passages;
 }
 
 /**
@@ -134,7 +134,7 @@ export function useDocumentQuoteSync(
   const syncQuotesFromDocument = useCallback(() => {
     if (!document) return;
 
-    const quoteNodes = findQuoteNodes(document);
+    const passageNodes = findPassageNodes(document);
     const paragraphNodes = findParagraphNodes(document);
 
     // Calculate paragraph offsets
@@ -149,8 +149,8 @@ export function useDocumentQuoteSync(
       offset += text.length + 1; // +1 for newline
     }
 
-    // Convert quote nodes to review items
-    const quotes: QuoteReviewItem[] = quoteNodes.map((node) => {
+    // Convert passage nodes to review items
+    const quotes: QuoteReviewItem[] = passageNodes.map((node) => {
       const text = extractTextFromNode(node);
       const metadata = node.metadata;
 
@@ -206,7 +206,7 @@ export function useDocumentQuoteSync(
         id: node.id,
         text,
         reference,
-        isNonBiblical: metadata.isNonBiblicalQuote ?? false,
+        isNonBiblical: metadata.isNonBiblicalPassage ?? false,
         isReviewed: metadata.userVerified ?? false,
         interjections,
         startOffset,
@@ -238,13 +238,13 @@ export function useDocumentQuoteSync(
 
     // Find and update the quote node in document
     const updatedChildren = document.children.map((child) => {
-      if (isQuoteBlockNode(child) && child.id === quote.id) {
+      if (isPassageNode(child) && child.id === quote.id) {
         return {
           ...child,
           metadata: {
             ...child.metadata,
             userVerified: quote.isReviewed,
-            isNonBiblicalQuote: quote.isNonBiblical,
+            isNonBiblicalPassage: quote.isNonBiblical,
             // Note: reference updates would need more complex handling
           },
         };
@@ -264,10 +264,10 @@ export function useDocumentQuoteSync(
   const removeQuoteFromDocument = useCallback((quoteId: NodeId) => {
     if (!document || !onDocumentUpdate) return;
 
-    // Find the quote and convert back to regular text
+    // Find the passage and convert back to regular text
     const updatedChildren = document.children.flatMap((child) => {
-      if (isQuoteBlockNode(child) && child.id === quoteId) {
-        // Convert quote children back to regular paragraph
+      if (isPassageNode(child) && child.id === quoteId) {
+        // Convert passage children back to regular paragraph
         const paragraphNode: ParagraphNode = {
           type: 'paragraph',
           id: `para_from_quote_${quoteId}`,
@@ -365,13 +365,13 @@ export function useDocumentQuoteSync(
   }, [document]);
 
   /**
-   * Get quote node by ID
+   * Get passage node by ID
    */
-  const getQuoteNode = useCallback((quoteId: NodeId): QuoteBlockNode | null => {
+  const getQuoteNode = useCallback((quoteId: NodeId): PassageNode | null => {
     if (!document) return null;
 
-    const quotes = findQuoteNodes(document);
-    return quotes.find((q) => q.id === quoteId) ?? null;
+    const passages = findPassageNodes(document);
+    return passages.find((q) => q.id === quoteId) ?? null;
   }, [document]);
 
   return {

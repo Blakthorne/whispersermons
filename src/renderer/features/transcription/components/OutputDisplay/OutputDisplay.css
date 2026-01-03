@@ -9,4 +9,5 @@
   box-shadow: var(--shadow);
   min-height: 0;
   transition: all var(--transition-base);
+  margin-top: 8px;
 }

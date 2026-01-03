@@ -70,8 +70,8 @@ export interface UseDocumentEditorResult {
   error: string | null;
   /** Statistics about the document */
   statistics: {
-    quoteCount: number;
-    verifiedQuoteCount: number;
+    passageCount: number;
+    verifiedPassageCount: number;
     paragraphCount: number;
     wordCount: number;
     eventLogSize: number;
@@ -402,8 +402,8 @@ export function useDocumentEditor(
     const stats = mutatorInstance.getStatistics();
 
     return {
-      quoteCount: stats.quoteCount,
-      verifiedQuoteCount: stats.verifiedQuoteCount,
+      passageCount: stats.passageCount,
+      verifiedPassageCount: stats.verifiedPassageCount,
       paragraphCount: stats.paragraphCount,
       wordCount: stats.wordCount,
       eventLogSize: state.eventLog.length,

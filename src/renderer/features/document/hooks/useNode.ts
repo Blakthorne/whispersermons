@@ -15,7 +15,7 @@ import type {
 import {
   isTextNode,
   isParagraphNode,
-  isQuoteBlockNode,
+  isPassageNode,
   isInterjectionNode,
   hasChildren,
 } from '../../../../shared/documentModel';
@@ -57,7 +57,7 @@ export interface UseNodeResult<T extends DocumentNode = DocumentNode> {
   /** Type guards */
   isText: boolean;
   isParagraph: boolean;
-  isQuoteBlock: boolean;
+  isPassageBlock: boolean;
   isInterjection: boolean;
   hasChildren: boolean;
 }
@@ -75,7 +75,7 @@ export interface UseNodeResult<T extends DocumentNode = DocumentNode> {
  *     node,
  *     exists,
  *     parent,
- *     isQuoteBlock,
+ *     isPassageBlock,
  *     text,
  *   } = useNode(nodeId);
  *
@@ -87,7 +87,7 @@ export interface UseNodeResult<T extends DocumentNode = DocumentNode> {
  *     <div>
  *       <p>Type: {node.type}</p>
  *       <p>Text: {text}</p>
- *       {isQuoteBlock && <QuoteDetails quote={node as QuoteBlockNode} />}
+ *       {isPassageBlock && <QuoteDetails quote={node as QuoteBlockNode} />}
  *     </div>
  *   );
  * }
@@ -139,7 +139,7 @@ export function useNode<T extends DocumentNode = DocumentNode>(
   const node = nodeWithPath?.node ?? null;
   const nodeIsText = node ? isTextNode(node) : false;
   const nodeIsParagraph = node ? isParagraphNode(node) : false;
-  const nodeIsQuoteBlock = node ? isQuoteBlockNode(node) : false;
+  const nodeIsPassageBlock = node ? isPassageNode(node) : false;
   const nodeIsInterjection = node ? isInterjectionNode(node) : false;
   const nodeHasChildren = node ? hasChildren(node) : false;
 
@@ -156,7 +156,7 @@ export function useNode<T extends DocumentNode = DocumentNode>(
     text,
     isText: nodeIsText,
     isParagraph: nodeIsParagraph,
-    isQuoteBlock: nodeIsQuoteBlock,
+    isPassageBlock: nodeIsPassageBlock,
     isInterjection: nodeIsInterjection,
     hasChildren: nodeHasChildren,
   };

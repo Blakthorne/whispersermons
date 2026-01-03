@@ -1,7 +1,7 @@
 /**
  * Document Hooks Tests
  *
- * Tests for useDocument, useQuotes, and useNode hooks.
+ * Tests for useDocument, usePassages, and useNode hooks.
  */
 
 import React from 'react';
@@ -9,14 +9,14 @@ import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { DocumentProvider } from '../DocumentContext';
 import { useDocument } from '../hooks/useDocument';
-import { useQuotes } from '../hooks/useQuotes';
+import { usePassages } from '../hooks/usePassages';
 import { useNode, useNodeTraversal } from '../hooks/useNode';
 import type {
   DocumentState,
   DocumentRootNode,
   ParagraphNode,
   TextNode,
-  QuoteBlockNode,
+  PassageNode,
 } from '../../../../shared/documentModel';
 import type { SermonDocument } from '../../../types';
 
@@ -44,16 +44,11 @@ function createParagraphNode(id: string, children: TextNode[]): ParagraphNode {
   };
 }
 
-function createQuoteBlockNode(
-  id: string,
-  text: string,
-  reference: string,
-  book: string
-): QuoteBlockNode {
+function createPassageNode(id: string, text: string, reference: string, book: string): PassageNode {
   const textNode = createTextNode(`${id}-text`, text);
   return {
     id,
-    type: 'quote_block',
+    type: 'passage',
     version: 1,
     updatedAt: new Date().toISOString(),
     metadata: {
@@ -87,14 +82,9 @@ function createTestDocumentState(): DocumentState {
   const textNode2 = createTextNode('text-2', 'Second paragraph.');
   const para1 = createParagraphNode('para-1', [textNode1]);
   const para2 = createParagraphNode('para-2', [textNode2]);
-  const quote1 = createQuoteBlockNode(
-    'quote-1',
-    'For God so loved the world.',
-    'John 3:16',
-    'John'
-  );
-  const quote2 = createQuoteBlockNode(
-    'quote-2',
+  const quote1 = createPassageNode('passage-1', 'For God so loved the world.', 'John 3:16', 'John');
+  const quote2 = createPassageNode(
+    'passage-2',
     'In the beginning was the Word.',
     'John 1:1',
     'John'
@@ -121,25 +111,25 @@ function createTestDocumentState(): DocumentState {
       'doc-root': { node: root, parentId: null, path: [] },
       'para-1': { node: para1, parentId: 'doc-root', path: ['doc-root'] },
       'text-1': { node: textNode1, parentId: 'para-1', path: ['doc-root', 'para-1'] },
-      'quote-1': { node: quote1, parentId: 'doc-root', path: ['doc-root'] },
-      'quote-1-text': {
+      'passage-1': { node: quote1, parentId: 'doc-root', path: ['doc-root'] },
+      'passage-1-text': {
         node: quote1.children[0]!,
-        parentId: 'quote-1',
-        path: ['doc-root', 'quote-1'],
+        parentId: 'passage-1',
+        path: ['doc-root', 'passage-1'],
       },
       'para-2': { node: para2, parentId: 'doc-root', path: ['doc-root'] },
       'text-2': { node: textNode2, parentId: 'para-2', path: ['doc-root', 'para-2'] },
-      'quote-2': { node: quote2, parentId: 'doc-root', path: ['doc-root'] },
-      'quote-2-text': {
+      'passage-2': { node: quote2, parentId: 'doc-root', path: ['doc-root'] },
+      'passage-2-text': {
         node: quote2.children[0]!,
-        parentId: 'quote-2',
-        path: ['doc-root', 'quote-2'],
+        parentId: 'passage-2',
+        path: ['doc-root', 'passage-2'],
       },
     },
-    quoteIndex: {
-      byReference: { 'John 3:16': ['quote-1'], 'John 1:1': ['quote-2'] },
-      byBook: { John: ['quote-1', 'quote-2'] },
-      all: ['quote-1', 'quote-2'],
+    passageIndex: {
+      byReference: { 'John 3:16': ['passage-1'], 'John 1:1': ['passage-2'] },
+      byBook: { John: ['passage-1', 'passage-2'] },
+      all: ['passage-1', 'passage-2'],
     },
     extracted: {
       references: ['John 3:16', 'John 1:1'],
@@ -238,7 +228,7 @@ describe('useDocument', () => {
       });
 
       expect(result.current.statistics).toBeDefined();
-      expect(result.current.statistics?.quoteCount).toBe(2);
+      expect(result.current.statistics?.passageCount).toBe(2);
       expect(result.current.statistics?.paragraphCount).toBe(2);
     });
 
@@ -291,40 +281,40 @@ describe('useDocument', () => {
 });
 
 // ============================================================================
-// useQuotes TESTS
+// usePassages TESTS
 // ============================================================================
 
-describe('useQuotes', () => {
-  describe('with quotes', () => {
-    it('should return hasQuotes as true', () => {
-      const { result } = renderHook(() => useQuotes(), {
+describe('usePassages', () => {
+  describe('with passages', () => {
+    it('should return hasPassages as true', () => {
+      const { result } = renderHook(() => usePassages(), {
         wrapper: createWrapper(createTestSermonDocument()),
       });
 
-      expect(result.current.hasQuotes).toBe(true);
+      expect(result.current.hasPassages).toBe(true);
     });
 
-    it('should return correct quoteCount', () => {
-      const { result } = renderHook(() => useQuotes(), {
+    it('should return correct passageCount', () => {
+      const { result } = renderHook(() => usePassages(), {
         wrapper: createWrapper(createTestSermonDocument()),
       });
 
-      expect(result.current.quoteCount).toBe(2);
+      expect(result.current.passageCount).toBe(2);
     });
 
     it('should return enriched quotes', () => {
-      const { result } = renderHook(() => useQuotes(), {
+      const { result } = renderHook(() => usePassages(), {
         wrapper: createWrapper(createTestSermonDocument()),
       });
 
-      expect(result.current.enrichedQuotes.length).toBe(2);
-      expect(result.current.enrichedQuotes[0]!.reference).toBe('John 3:16');
-      expect(result.current.enrichedQuotes[0]!.book).toBe('John');
-      expect(result.current.enrichedQuotes[0]!.index).toBe(0);
+      expect(result.current.enrichedPassages.length).toBe(2);
+      expect(result.current.enrichedPassages[0]!.reference).toBe('John 3:16');
+      expect(result.current.enrichedPassages[0]!.book).toBe('John');
+      expect(result.current.enrichedPassages[0]!.index).toBe(0);
     });
 
     it('should return book summary', () => {
-      const { result } = renderHook(() => useQuotes(), {
+      const { result } = renderHook(() => usePassages(), {
         wrapper: createWrapper(createTestSermonDocument()),
       });
 
@@ -332,54 +322,54 @@ describe('useQuotes', () => {
     });
 
     it('should get quote by ID', () => {
-      const { result } = renderHook(() => useQuotes(), {
+      const { result } = renderHook(() => usePassages(), {
         wrapper: createWrapper(createTestSermonDocument()),
       });
 
-      const quote = result.current.getQuoteById('quote-1');
-      expect(quote).toBeDefined();
-      expect(quote?.metadata.reference?.normalizedReference).toBe('John 3:16');
+      const passage = result.current.getPassageById('passage-1');
+      expect(passage).toBeDefined();
+      expect(passage?.metadata.reference?.normalizedReference).toBe('John 3:16');
     });
 
-    it('should get quotes by reference', () => {
-      const { result } = renderHook(() => useQuotes(), {
+    it('should get passages by reference', () => {
+      const { result } = renderHook(() => usePassages(), {
         wrapper: createWrapper(createTestSermonDocument()),
       });
 
-      const quotes = result.current.getQuotesByReference('John 3:16');
-      expect(quotes.length).toBe(1);
+      const passages = result.current.getPassagesByReference('John 3:16');
+      expect(passages.length).toBe(1);
     });
 
-    it('should get quotes by book', () => {
-      const { result } = renderHook(() => useQuotes(), {
+    it('should get passages by book', () => {
+      const { result } = renderHook(() => usePassages(), {
         wrapper: createWrapper(createTestSermonDocument()),
       });
 
-      const quotes = result.current.getQuotesByBook('John');
-      expect(quotes.length).toBe(2);
+      const passages = result.current.getPassagesByBook('John');
+      expect(passages.length).toBe(2);
     });
 
-    it('should filter quotes by confidence', () => {
-      const { result } = renderHook(() => useQuotes(), {
+    it('should filter passages by confidence', () => {
+      const { result } = renderHook(() => usePassages(), {
         wrapper: createWrapper(createTestSermonDocument()),
       });
 
-      const filtered = result.current.filterQuotes({ minConfidence: 0.8 });
+      const filtered = result.current.filterPassages({ minConfidence: 0.8 });
       expect(filtered.length).toBe(2);
 
-      const highFiltered = result.current.filterQuotes({ minConfidence: 0.9 });
+      const highFiltered = result.current.filterPassages({ minConfidence: 0.9 });
       expect(highFiltered.length).toBe(0);
     });
   });
 
-  describe('without quotes', () => {
-    it('should return hasQuotes as false', () => {
-      const { result } = renderHook(() => useQuotes(), {
+  describe('without passages', () => {
+    it('should return hasPassages as false', () => {
+      const { result } = renderHook(() => usePassages(), {
         wrapper: createWrapper(null),
       });
 
-      expect(result.current.hasQuotes).toBe(false);
-      expect(result.current.quoteCount).toBe(0);
+      expect(result.current.hasPassages).toBe(false);
+      expect(result.current.passageCount).toBe(0);
     });
   });
 });
@@ -406,7 +396,7 @@ describe('useNode', () => {
 
       expect(result.current.isParagraph).toBe(true);
       expect(result.current.isText).toBe(false);
-      expect(result.current.isQuoteBlock).toBe(false);
+      expect(result.current.isPassageBlock).toBe(false);
     });
 
     it('should return parent info', () => {
@@ -476,8 +466,8 @@ describe('useNodeTraversal', () => {
       wrapper: createWrapper(createTestSermonDocument()),
     });
 
-    const quoteBlocks = result.current.findByPredicate((node) => node.type === 'quote_block');
-    expect(quoteBlocks.length).toBe(2);
+    const passageBlocks = result.current.findByPredicate((node) => node.type === 'passage');
+    expect(passageBlocks.length).toBe(2);
   });
 
   it('should get all nodes', () => {
@@ -501,6 +491,6 @@ describe('useNodeTraversal', () => {
 
     expect(visited).toContain('doc-root');
     expect(visited).toContain('para-1');
-    expect(visited).toContain('quote-1');
+    expect(visited).toContain('passage-1');
   });
 });

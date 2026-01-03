@@ -86,7 +86,7 @@ function createDocumentState(root: DocumentRootNode): DocumentState {
     undoStack: [],
     redoStack: [],
     nodeIndex,
-    quoteIndex: { byReference: {}, byBook: {}, all: [] },
+    passageIndex: { byReference: {}, byBook: {}, all: [] },
     extracted: { references: [], tags: [] },
     lastModified: now,
     createdAt: now,

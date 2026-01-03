@@ -16,13 +16,13 @@ import type {
   DocumentRootNode,
   DocumentEvent,
   NodeIndex,
-  QuoteIndex,
+  PassageIndex,
   ExtractedReferences,
   DocumentNode,
   NodeId,
-  QuoteBlockNode,
+  PassageNode,
 } from '../../../../shared/documentModel';
-import { isQuoteBlockNode, hasChildren } from '../../../../shared/documentModel';
+import { isPassageNode, hasChildren } from '../../../../shared/documentModel';
 
 // ============================================================================
 // TYPES
@@ -241,7 +241,7 @@ export function compactDeserialize(json: string | null): DeserializationResult {
 
       // Rebuild indexes
       const nodeIndex = buildNodeIndex(compact.root);
-      const quoteIndex = buildQuoteIndex(compact.root, nodeIndex);
+      const passageIndex = buildPassageIndex(compact.root, nodeIndex);
       const extracted = buildExtracted(compact.root, nodeIndex);
 
       const state: DocumentState = {
@@ -251,7 +251,7 @@ export function compactDeserialize(json: string | null): DeserializationResult {
         undoStack: compact.undoStack || [],
         redoStack: compact.redoStack || [],
         nodeIndex,
-        quoteIndex,
+        passageIndex,
         extracted,
         lastModified: compact.lastModified || new Date().toISOString(),
         createdAt: compact.createdAt || new Date().toISOString(),
@@ -301,31 +301,31 @@ export function buildNodeIndex(root: DocumentRootNode): NodeIndex {
 }
 
 /**
- * Build QuoteIndex from root node.
+ * Build PassageIndex from root node.
  */
-export function buildQuoteIndex(_root: DocumentRootNode, nodeIndex: NodeIndex): QuoteIndex {
+export function buildPassageIndex(_root: DocumentRootNode, nodeIndex: NodeIndex): PassageIndex {
   const byReference: { [reference: string]: NodeId[] } = {};
   const byBook: { [book: string]: NodeId[] } = {};
   const all: NodeId[] = [];
 
   for (const entry of Object.values(nodeIndex)) {
-    if (isQuoteBlockNode(entry.node)) {
-      const quote = entry.node as QuoteBlockNode;
-      all.push(quote.id);
+    if (isPassageNode(entry.node)) {
+      const passage = entry.node as PassageNode;
+      all.push(passage.id);
 
       // Index by reference
-      const ref = quote.metadata.reference?.normalizedReference ?? 'Unknown';
+      const ref = passage.metadata.reference?.normalizedReference ?? 'Unknown';
       if (!byReference[ref]) {
         byReference[ref] = [];
       }
-      byReference[ref].push(quote.id);
+      byReference[ref].push(passage.id);
 
       // Index by book
-      const book = quote.metadata.reference?.book ?? 'Unknown';
+      const book = passage.metadata.reference?.book ?? 'Unknown';
       if (!byBook[book]) {
         byBook[book] = [];
       }
-      byBook[book].push(quote.id);
+      byBook[book].push(passage.id);
     }
   }
 
@@ -343,9 +343,9 @@ export function buildExtracted(
   const tags: string[] = [];
 
   for (const entry of Object.values(nodeIndex)) {
-    if (isQuoteBlockNode(entry.node)) {
-      const quote = entry.node as QuoteBlockNode;
-      const ref = quote.metadata.reference?.normalizedReference;
+    if (isPassageNode(entry.node)) {
+      const passage = entry.node as PassageNode;
+      const ref = passage.metadata.reference?.normalizedReference;
       if (ref && !references.includes(ref)) {
         references.push(ref);
       }
@@ -396,8 +396,8 @@ export function validateDocumentState(state: unknown): ValidationResult {
     warnings.push('Missing nodeIndex (will be rebuilt)');
   }
 
-  if (!s.quoteIndex || typeof s.quoteIndex !== 'object') {
-    warnings.push('Missing quoteIndex (will be rebuilt)');
+  if (!s.passageIndex || typeof s.passageIndex !== 'object') {
+    warnings.push('Missing passageIndex (will be rebuilt)');
   }
 
   if (!s.eventLog || !Array.isArray(s.eventLog)) {

@@ -7,7 +7,7 @@
  *
  * Key responsibilities:
  * - Apply events to produce new state
- * - Maintain node and quote indexes
+ * - Maintain node and passage indexes
  * - Handle version increments
  * - Update timestamps
  * - Manage undo/redo stacks
@@ -19,20 +19,20 @@ import type {
   DocumentRootNode,
   ParagraphNode,
   TextNode,
-  QuoteBlockNode,
+  PassageNode,
   NodeId,
   NodeIndex,
-  QuoteIndex,
+  PassageIndex,
   DocumentEvent,
   NodeCreatedEvent,
   NodeDeletedEvent,
   NodeMovedEvent,
   TextChangedEvent,
   ContentReplacedEvent,
-  QuoteCreatedEvent,
-  QuoteRemovedEvent,
-  QuoteMetadataUpdatedEvent,
-  QuoteVerifiedEvent,
+  PassageCreatedEvent,
+  PassageRemovedEvent,
+  PassageMetadataUpdatedEvent,
+  PassageVerifiedEvent,
   InterjectionAddedEvent,
   InterjectionRemovedEvent,
   ParagraphMergedEvent,
@@ -45,7 +45,7 @@ import type {
 
 import {
   hasChildren,
-  isQuoteBlockNode,
+  isPassageNode,
   DEFAULT_UNDO_STACK_SIZE,
 } from '../../../../shared/documentModel';
 
@@ -116,20 +116,20 @@ export function applyEvent(
         newState = applyContentReplaced(state, event);
         break;
 
-      case 'quote_created':
-        newState = applyQuoteCreated(state, event);
+      case 'passage_created':
+        newState = applyPassageCreated(state, event);
         break;
 
-      case 'quote_removed':
-        newState = applyQuoteRemoved(state, event);
+      case 'passage_removed':
+        newState = applyPassageRemoved(state, event);
         break;
 
-      case 'quote_metadata_updated':
-        newState = applyQuoteMetadataUpdated(state, event);
+      case 'passage_metadata_updated':
+        newState = applyPassageMetadataUpdated(state, event);
         break;
 
-      case 'quote_verified':
-        newState = applyQuoteVerified(state, event);
+      case 'passage_verified':
+        newState = applyPassageVerified(state, event);
         break;
 
       case 'interjection_added':
@@ -243,10 +243,10 @@ function applyNodeCreated(state: DocumentState, event: NodeCreatedEvent): Docume
   const parentPath = parentId ? state.nodeIndex[parentId]?.path ?? [] : [];
   addNodeAndDescendantsToIndex(newNodeIndex, node, parentId, parentPath);
 
-  // Update quote index if it's a quote
-  const newQuoteIndex = isQuoteBlockNode(node)
-    ? addQuoteToIndex(state.quoteIndex, node)
-    : state.quoteIndex;
+  // Update passage index if it's a passage
+  const newPassageIndex = isPassageNode(node)
+    ? addPassageToIndex(state.passageIndex, node)
+    : state.passageIndex;
 
   return {
     ...state,
@@ -254,7 +254,7 @@ function applyNodeCreated(state: DocumentState, event: NodeCreatedEvent): Docume
     root: newRoot,
     eventLog: [...state.eventLog, event],
     nodeIndex: newNodeIndex,
-    quoteIndex: newQuoteIndex,
+    passageIndex: newPassageIndex,
     lastModified: event.timestamp,
     redoStack: [], // Clear redo stack on new changes
   };
@@ -270,12 +270,12 @@ function applyNodeDeleted(state: DocumentState, event: NodeDeletedEvent): Docume
   const newNodeIndex = { ...state.nodeIndex };
   removeNodeAndDescendantsFromIndex(newNodeIndex, nodeId);
 
-  // Update quote index if it was a quote
+  // Update passage index if it was a passage
   const deletedNode = state.nodeIndex[nodeId]?.node;
-  const newQuoteIndex =
-    deletedNode && isQuoteBlockNode(deletedNode)
-      ? removeQuoteFromIndex(state.quoteIndex, deletedNode)
-      : state.quoteIndex;
+  const newPassageIndex =
+    deletedNode && isPassageNode(deletedNode)
+      ? removePassageFromIndex(state.passageIndex, deletedNode)
+      : state.passageIndex;
 
   return {
     ...state,
@@ -283,7 +283,7 @@ function applyNodeDeleted(state: DocumentState, event: NodeDeletedEvent): Docume
     root: newRoot,
     eventLog: [...state.eventLog, event],
     nodeIndex: newNodeIndex,
-    quoteIndex: newQuoteIndex,
+    passageIndex: newPassageIndex,
     lastModified: event.timestamp,
     redoStack: [],
   };
@@ -385,8 +385,8 @@ function applyContentReplaced(state: DocumentState, event: ContentReplacedEvent)
     addNodeAndDescendantsToIndex(newNodeIndex, child, nodeId, [...parentPath, nodeId]);
   });
 
-  // Rebuild quote index
-  const newQuoteIndex = rebuildQuoteIndex(newRoot);
+  // Rebuild passage index
+  const newPassageIndex = rebuildPassageIndex(newRoot);
 
   return {
     ...state,
@@ -394,28 +394,28 @@ function applyContentReplaced(state: DocumentState, event: ContentReplacedEvent)
     root: newRoot,
     eventLog: [...state.eventLog, event],
     nodeIndex: newNodeIndex,
-    quoteIndex: newQuoteIndex,
+    passageIndex: newPassageIndex,
     lastModified: event.timestamp,
     redoStack: [],
   };
 }
 
-function applyQuoteCreated(state: DocumentState, event: QuoteCreatedEvent): DocumentState {
-  const { quote, parentId, index } = event;
+function applyPassageCreated(state: DocumentState, event: PassageCreatedEvent): DocumentState {
+  const { passage, parentId, index } = event;
 
-  // Insert quote into tree
-  const newRoot = insertNodeInTree(state.root, quote, parentId, index);
+  // Insert passage into tree
+  const newRoot = insertNodeInTree(state.root, passage, parentId, index);
 
   // Update node index (including all descendants)
   const newNodeIndex = { ...state.nodeIndex };
   const parentPath = parentId ? state.nodeIndex[parentId]?.path ?? [] : [];
-  addNodeAndDescendantsToIndex(newNodeIndex, quote, parentId, parentPath);
+  addNodeAndDescendantsToIndex(newNodeIndex, passage, parentId, parentPath);
 
-  // Update quote index
-  const newQuoteIndex = addQuoteToIndex(state.quoteIndex, quote);
+  // Update passage index
+  const newPassageIndex = addPassageToIndex(state.passageIndex, passage);
 
   // Update extracted references
-  const ref = quote.metadata.reference?.normalizedReference;
+  const ref = passage.metadata.reference?.normalizedReference;
   const newExtracted = {
     ...state.extracted,
     references: ref ? [...new Set([...state.extracted.references, ref])] : state.extracted.references,
@@ -427,54 +427,54 @@ function applyQuoteCreated(state: DocumentState, event: QuoteCreatedEvent): Docu
     root: newRoot,
     eventLog: [...state.eventLog, event],
     nodeIndex: newNodeIndex,
-    quoteIndex: newQuoteIndex,
+    passageIndex: newPassageIndex,
     extracted: newExtracted,
     lastModified: event.timestamp,
     redoStack: [],
   };
 }
 
-function applyQuoteRemoved(state: DocumentState, event: QuoteRemovedEvent): DocumentState {
-  const { quoteId, replacementNodes } = event;
+function applyPassageRemoved(state: DocumentState, event: PassageRemovedEvent): DocumentState {
+  const { passageId, replacementNodes } = event;
 
-  const quoteEntry = state.nodeIndex[quoteId];
-  if (!quoteEntry || quoteEntry.node.type !== 'quote_block') {
-    throw new Error(`Quote not found: ${quoteId}`);
+  const passageEntry = state.nodeIndex[passageId];
+  if (!passageEntry || passageEntry.node.type !== 'passage') {
+    throw new Error(`Passage not found: ${passageId}`);
   }
 
-  const parentId = quoteEntry.parentId;
+  const parentId = passageEntry.parentId;
   if (!parentId) {
-    throw new Error('Quote has no parent');
+    throw new Error('Passage has no parent');
   }
 
-  // Find the quote's index in parent before removing
+  // Find the passage's index in parent before removing
   // We need to look at the actual tree, not the nodeIndex entry (which may be stale)
-  let quoteIndex = -1;
-  const findQuoteIndex = (node: DocumentNode): boolean => {
+  let passageIndex = -1;
+  const findPassageIndex = (node: DocumentNode): boolean => {
     if (node.id === parentId && hasChildren(node)) {
-      quoteIndex = node.children.findIndex((c) => c.id === quoteId);
+      passageIndex = node.children.findIndex((c) => c.id === passageId);
       return true;
     }
     if (hasChildren(node)) {
-      return node.children.some(findQuoteIndex);
+      return node.children.some(findPassageIndex);
     }
     return false;
   };
-  findQuoteIndex(state.root);
+  findPassageIndex(state.root);
 
-  // Remove quote from tree
-  let newRoot = removeNodeFromTree(state.root, quoteId, parentId);
+  // Remove passage from tree
+  let newRoot = removeNodeFromTree(state.root, passageId, parentId);
 
-  // Insert replacement nodes at the quote's position
-  if (quoteIndex >= 0) {
+  // Insert replacement nodes at the passage's position
+  if (passageIndex >= 0) {
     replacementNodes.forEach((node, i) => {
-      newRoot = insertNodeInTree(newRoot, node, parentId, quoteIndex + i);
+      newRoot = insertNodeInTree(newRoot, node, parentId, passageIndex + i);
     });
   }
 
   // Update node index
   const newNodeIndex = { ...state.nodeIndex };
-  removeNodeAndDescendantsFromIndex(newNodeIndex, quoteId);
+  removeNodeAndDescendantsFromIndex(newNodeIndex, passageId);
 
   // Add replacement nodes to index
   const parentPath = state.nodeIndex[parentId]?.path ?? [];
@@ -485,8 +485,8 @@ function applyQuoteRemoved(state: DocumentState, event: QuoteRemovedEvent): Docu
     addNodeAndDescendantsToIndex(newNodeIndex, node, parentId, [...parentPath, parentId]);
   });
 
-  // Update quote index
-  const newQuoteIndex = removeQuoteFromIndex(state.quoteIndex, quoteEntry.node as QuoteBlockNode);
+  // Update passage index
+  const newPassageIndex = removePassageFromIndex(state.passageIndex, passageEntry.node as PassageNode);
 
   return {
     ...state,
@@ -494,37 +494,37 @@ function applyQuoteRemoved(state: DocumentState, event: QuoteRemovedEvent): Docu
     root: newRoot,
     eventLog: [...state.eventLog, event],
     nodeIndex: newNodeIndex,
-    quoteIndex: newQuoteIndex,
+    passageIndex: newPassageIndex,
     lastModified: event.timestamp,
     redoStack: [],
   };
 }
 
-function applyQuoteMetadataUpdated(state: DocumentState, event: QuoteMetadataUpdatedEvent): DocumentState {
-  const { quoteId, newMetadata } = event;
+function applyPassageMetadataUpdated(state: DocumentState, event: PassageMetadataUpdatedEvent): DocumentState {
+  const { passageId, newMetadata } = event;
 
-  const quoteEntry = state.nodeIndex[quoteId];
-  if (!quoteEntry || quoteEntry.node.type !== 'quote_block') {
-    throw new Error(`Quote not found: ${quoteId}`);
+  const passageEntry = state.nodeIndex[passageId];
+  if (!passageEntry || passageEntry.node.type !== 'passage') {
+    throw new Error(`Passage not found: ${passageId}`);
   }
 
-  const quote = quoteEntry.node as QuoteBlockNode;
-  const updatedQuote: QuoteBlockNode = {
-    ...quote,
+  const passage = passageEntry.node as PassageNode;
+  const updatedPassage: PassageNode = {
+    ...passage,
     metadata: newMetadata,
-    version: quote.version + 1,
+    version: passage.version + 1,
     updatedAt: event.timestamp,
   };
 
   // Update tree
-  const newRoot = updateNodeInTree(state.root, quoteId, updatedQuote);
+  const newRoot = updateNodeInTree(state.root, passageId, updatedPassage);
 
   // Update index
   const newNodeIndex = { ...state.nodeIndex };
-  newNodeIndex[quoteId] = { ...quoteEntry, node: updatedQuote };
+  newNodeIndex[passageId] = { ...passageEntry, node: updatedPassage };
 
-  // Rebuild quote index if reference changed
-  const newQuoteIndex = rebuildQuoteIndex(newRoot);
+  // Rebuild passage index if reference changed
+  const newPassageIndex = rebuildPassageIndex(newRoot);
 
   return {
     ...state,
@@ -532,38 +532,38 @@ function applyQuoteMetadataUpdated(state: DocumentState, event: QuoteMetadataUpd
     root: newRoot,
     eventLog: [...state.eventLog, event],
     nodeIndex: newNodeIndex,
-    quoteIndex: newQuoteIndex,
+    passageIndex: newPassageIndex,
     lastModified: event.timestamp,
     redoStack: [],
   };
 }
 
-function applyQuoteVerified(state: DocumentState, event: QuoteVerifiedEvent): DocumentState {
-  const { quoteId, verified, notes } = event;
+function applyPassageVerified(state: DocumentState, event: PassageVerifiedEvent): DocumentState {
+  const { passageId, verified, notes } = event;
 
-  const quoteEntry = state.nodeIndex[quoteId];
-  if (!quoteEntry || quoteEntry.node.type !== 'quote_block') {
-    throw new Error(`Quote not found: ${quoteId}`);
+  const passageEntry = state.nodeIndex[passageId];
+  if (!passageEntry || passageEntry.node.type !== 'passage') {
+    throw new Error(`Passage not found: ${passageId}`);
   }
 
-  const quote = quoteEntry.node as QuoteBlockNode;
-  const updatedQuote: QuoteBlockNode = {
-    ...quote,
+  const passage = passageEntry.node as PassageNode;
+  const updatedPassage: PassageNode = {
+    ...passage,
     metadata: {
-      ...quote.metadata,
+      ...passage.metadata,
       userVerified: verified,
-      userNotes: notes ?? quote.metadata.userNotes,
+      userNotes: notes ?? passage.metadata.userNotes,
     },
-    version: quote.version + 1,
+    version: passage.version + 1,
     updatedAt: event.timestamp,
   };
 
   // Update tree
-  const newRoot = updateNodeInTree(state.root, quoteId, updatedQuote);
+  const newRoot = updateNodeInTree(state.root, passageId, updatedPassage);
 
   // Update index
   const newNodeIndex = { ...state.nodeIndex };
-  newNodeIndex[quoteId] = { ...quoteEntry, node: updatedQuote };
+  newNodeIndex[passageId] = { ...passageEntry, node: updatedPassage };
 
   return {
     ...state,
@@ -577,34 +577,34 @@ function applyQuoteVerified(state: DocumentState, event: QuoteVerifiedEvent): Do
 }
 
 function applyInterjectionAdded(state: DocumentState, event: InterjectionAddedEvent): DocumentState {
-  const { quoteId, interjection, index } = event;
+  const { passageId, interjection, index } = event;
 
-  const quoteEntry = state.nodeIndex[quoteId];
-  if (!quoteEntry || quoteEntry.node.type !== 'quote_block') {
-    throw new Error(`Quote not found: ${quoteId}`);
+  const passageEntry = state.nodeIndex[passageId];
+  if (!passageEntry || passageEntry.node.type !== 'passage') {
+    throw new Error(`Passage not found: ${passageId}`);
   }
 
-  const quote = quoteEntry.node as QuoteBlockNode;
-  const newChildren = [...quote.children];
+  const passage = passageEntry.node as PassageNode;
+  const newChildren = [...passage.children];
   newChildren.splice(index, 0, interjection);
 
-  const updatedQuote: QuoteBlockNode = {
-    ...quote,
+  const updatedPassage: PassageNode = {
+    ...passage,
     children: newChildren,
-    version: quote.version + 1,
+    version: passage.version + 1,
     updatedAt: event.timestamp,
   };
 
   // Update tree
-  const newRoot = updateNodeInTree(state.root, quoteId, updatedQuote);
+  const newRoot = updateNodeInTree(state.root, passageId, updatedPassage);
 
   // Update indexes
   const newNodeIndex = { ...state.nodeIndex };
-  newNodeIndex[quoteId] = { ...quoteEntry, node: updatedQuote };
+  newNodeIndex[passageId] = { ...passageEntry, node: updatedPassage };
   newNodeIndex[interjection.id] = {
     node: interjection,
-    parentId: quoteId,
-    path: [...quoteEntry.path, quoteId],
+    parentId: passageId,
+    path: [...passageEntry.path, passageId],
   };
 
   return {
@@ -619,29 +619,29 @@ function applyInterjectionAdded(state: DocumentState, event: InterjectionAddedEv
 }
 
 function applyInterjectionRemoved(state: DocumentState, event: InterjectionRemovedEvent): DocumentState {
-  const { quoteId, interjectionId } = event;
+  const { passageId, interjectionId } = event;
 
-  const quoteEntry = state.nodeIndex[quoteId];
-  if (!quoteEntry || quoteEntry.node.type !== 'quote_block') {
-    throw new Error(`Quote not found: ${quoteId}`);
+  const passageEntry = state.nodeIndex[passageId];
+  if (!passageEntry || passageEntry.node.type !== 'passage') {
+    throw new Error(`Passage not found: ${passageId}`);
   }
 
-  const quote = quoteEntry.node as QuoteBlockNode;
-  const newChildren = quote.children.filter((c) => c.id !== interjectionId);
+  const passage = passageEntry.node as PassageNode;
+  const newChildren = passage.children.filter((c) => c.id !== interjectionId);
 
-  const updatedQuote: QuoteBlockNode = {
-    ...quote,
+  const updatedPassage: PassageNode = {
+    ...passage,
     children: newChildren,
-    version: quote.version + 1,
+    version: passage.version + 1,
     updatedAt: event.timestamp,
   };
 
   // Update tree
-  const newRoot = updateNodeInTree(state.root, quoteId, updatedQuote);
+  const newRoot = updateNodeInTree(state.root, passageId, updatedPassage);
 
   // Update indexes
   const newNodeIndex = { ...state.nodeIndex };
-  newNodeIndex[quoteId] = { ...quoteEntry, node: updatedQuote };
+  newNodeIndex[passageId] = { ...passageEntry, node: updatedPassage };
   delete newNodeIndex[interjectionId];
 
   return {
@@ -852,10 +852,10 @@ function isUndoableEvent(event: DocumentEvent): boolean {
     'node_moved',
     'text_changed',
     'content_replaced',
-    'quote_created',
-    'quote_removed',
-    'quote_metadata_updated',
-    'quote_verified',
+    'passage_created',
+    'passage_removed',
+    'passage_metadata_updated',
+    'passage_verified',
     'interjection_added',
     'interjection_removed',
     'paragraph_merged',
@@ -995,57 +995,57 @@ function addNodeAndDescendantsToIndex(
 }
 
 /**
- * Add a quote to the quote index.
+ * Add a passage to the passage index.
  */
-function addQuoteToIndex(index: QuoteIndex, quote: QuoteBlockNode): QuoteIndex {
-  const ref = quote.metadata.reference?.normalizedReference ?? 'Unknown';
-  const book = quote.metadata.reference?.book ?? 'Unknown';
+function addPassageToIndex(index: PassageIndex, passage: PassageNode): PassageIndex {
+  const ref = passage.metadata.reference?.normalizedReference ?? 'Unknown';
+  const book = passage.metadata.reference?.book ?? 'Unknown';
 
   return {
     byReference: {
       ...index.byReference,
-      [ref]: [...(index.byReference[ref] ?? []), quote.id],
+      [ref]: [...(index.byReference[ref] ?? []), passage.id],
     },
     byBook: {
       ...index.byBook,
-      [book]: [...(index.byBook[book] ?? []), quote.id],
+      [book]: [...(index.byBook[book] ?? []), passage.id],
     },
-    all: [...index.all, quote.id],
+    all: [...index.all, passage.id],
   };
 }
 
 /**
- * Remove a quote from the quote index.
+ * Remove a passage from the passage index.
  */
-function removeQuoteFromIndex(index: QuoteIndex, quote: QuoteBlockNode): QuoteIndex {
-  const ref = quote.metadata.reference?.normalizedReference ?? 'Unknown';
-  const book = quote.metadata.reference?.book ?? 'Unknown';
+function removePassageFromIndex(index: PassageIndex, passage: PassageNode): PassageIndex {
+  const ref = passage.metadata.reference?.normalizedReference ?? 'Unknown';
+  const book = passage.metadata.reference?.book ?? 'Unknown';
 
   return {
     byReference: {
       ...index.byReference,
-      [ref]: (index.byReference[ref] ?? []).filter((id) => id !== quote.id),
+      [ref]: (index.byReference[ref] ?? []).filter((id) => id !== passage.id),
     },
     byBook: {
       ...index.byBook,
-      [book]: (index.byBook[book] ?? []).filter((id) => id !== quote.id),
+      [book]: (index.byBook[book] ?? []).filter((id) => id !== passage.id),
     },
-    all: index.all.filter((id) => id !== quote.id),
+    all: index.all.filter((id) => id !== passage.id),
   };
 }
 
 /**
- * Rebuild the quote index from scratch by traversing the tree.
+ * Rebuild the passage index from scratch by traversing the tree.
  */
-function rebuildQuoteIndex(root: DocumentRootNode): QuoteIndex {
-  const newIndex: QuoteIndex = {
+function rebuildPassageIndex(root: DocumentRootNode): PassageIndex {
+  const newIndex: PassageIndex = {
     byReference: {},
     byBook: {},
     all: [],
   };
 
   const traverse = (node: DocumentNode): void => {
-    if (isQuoteBlockNode(node)) {
+    if (isPassageNode(node)) {
       const ref = node.metadata.reference?.normalizedReference ?? 'Unknown';
       const book = node.metadata.reference?.book ?? 'Unknown';
 

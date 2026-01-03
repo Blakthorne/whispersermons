@@ -31,7 +31,7 @@ export interface SermonProcessingResult {
   rawTranscript: string;
   /**
    * Structured document state (AST-based model)
-   * Contains the full document tree with stable node IDs, quote metadata,
+   * Contains the full document tree with stable node IDs, passage metadata,
    * interjection positions, and event log for undo/redo.
    */
   documentState?: import('../../shared/documentModel').DocumentState;
@@ -41,7 +41,7 @@ export interface SermonProcessingResult {
   processingMetadata?: {
     stageTimes: Record<string, number>;
     totalTime: number;
-    quoteCount: number;
+    passageCount: number;
     paragraphCount: number;
     interjectionCount: number;
   };

@@ -13,8 +13,8 @@
 
 import { useCallback, useMemo } from 'react';
 import { useDocumentContext } from '../DocumentContext';
-import { DocumentMutator, createDocumentMutator, type MutationResult, type CreateQuoteOptions } from '../DocumentMutator';
-import type { NodeId, QuoteMetadata } from '../../../../shared/documentModel';
+import { DocumentMutator, createDocumentMutator, type MutationResult, type CreatePassageOptions } from '../DocumentMutator';
+import type { NodeId, PassageMetadata } from '../../../../shared/documentModel';
 
 // ============================================================================
 // TYPES
@@ -44,21 +44,21 @@ export interface UseDocumentMutationsResult {
   /** Delete a node */
   deleteNode: (nodeId: NodeId) => MutationResult | null;
 
-  // --- Quote mutations ---
-  /** Create a new quote block */
-  createQuote: (options: CreateQuoteOptions) => MutationResult | null;
-  /** Remove a quote block */
-  removeQuote: (quoteId: NodeId) => MutationResult | null;
-  /** Update quote metadata */
-  updateQuoteMetadata: (quoteId: NodeId, updates: Partial<QuoteMetadata>) => MutationResult | null;
-  /** Verify or unverify a quote */
-  verifyQuote: (quoteId: NodeId, verified: boolean, notes?: string) => MutationResult | null;
+  // --- Passage mutations ---
+  /** Create a new passage block */
+  createPassage: (options: CreatePassageOptions) => MutationResult | null;
+  /** Remove a passage block */
+  removePassage: (passageId: NodeId) => MutationResult | null;
+  /** Update passage metadata */
+  updatePassageMetadata: (passageId: NodeId, updates: Partial<PassageMetadata>) => MutationResult | null;
+  /** Verify or unverify a passage */
+  verifyPassage: (passageId: NodeId, verified: boolean, notes?: string) => MutationResult | null;
 
   // --- Interjection mutations ---
-  /** Add an interjection to a quote */
-  addInterjection: (quoteId: NodeId, content: string, index: number) => MutationResult | null;
-  /** Remove an interjection from a quote */
-  removeInterjection: (quoteId: NodeId, interjectionId: NodeId) => MutationResult | null;
+  /** Add an interjection to a passage */
+  addInterjection: (passageId: NodeId, content: string, index: number) => MutationResult | null;
+  /** Remove an interjection from a passage */
+  removeInterjection: (passageId: NodeId, interjectionId: NodeId) => MutationResult | null;
 
   // --- Paragraph mutations ---
   /** Split a paragraph at a character offset */
@@ -159,36 +159,36 @@ export function useDocumentMutations(): UseDocumentMutationsResult {
     [mutator]
   );
 
-  // --- Quote mutations ---
+  // --- Passage mutations ---
 
-  const createQuote = useCallback(
-    (options: CreateQuoteOptions): MutationResult | null => {
+  const createPassage = useCallback(
+    (options: CreatePassageOptions): MutationResult | null => {
       if (!mutator) return null;
-      return mutator.createQuote(options);
+      return mutator.createPassage(options);
     },
     [mutator]
   );
 
-  const removeQuote = useCallback(
-    (quoteId: NodeId): MutationResult | null => {
+  const removePassage = useCallback(
+    (passageId: NodeId): MutationResult | null => {
       if (!mutator) return null;
-      return mutator.removeQuote(quoteId);
+      return mutator.removePassage(passageId);
     },
     [mutator]
   );
 
-  const updateQuoteMetadata = useCallback(
-    (quoteId: NodeId, updates: Partial<QuoteMetadata>): MutationResult | null => {
+  const updatePassageMetadata = useCallback(
+    (passageId: NodeId, updates: Partial<PassageMetadata>): MutationResult | null => {
       if (!mutator) return null;
-      return mutator.updateQuoteMetadata(quoteId, updates);
+      return mutator.updatePassageMetadata(passageId, updates);
     },
     [mutator]
   );
 
-  const verifyQuote = useCallback(
-    (quoteId: NodeId, verified: boolean, notes?: string): MutationResult | null => {
+  const verifyPassage = useCallback(
+    (passageId: NodeId, verified: boolean, notes?: string): MutationResult | null => {
       if (!mutator) return null;
-      return mutator.verifyQuote(quoteId, verified, notes);
+      return mutator.verifyPassage(passageId, verified, notes);
     },
     [mutator]
   );
@@ -196,17 +196,17 @@ export function useDocumentMutations(): UseDocumentMutationsResult {
   // --- Interjection mutations ---
 
   const addInterjection = useCallback(
-    (quoteId: NodeId, content: string, index: number): MutationResult | null => {
+    (passageId: NodeId, content: string, index: number): MutationResult | null => {
       if (!mutator) return null;
-      return mutator.addInterjection(quoteId, content, index);
+      return mutator.addInterjection(passageId, content, index);
     },
     [mutator]
   );
 
   const removeInterjection = useCallback(
-    (quoteId: NodeId, interjectionId: NodeId): MutationResult | null => {
+    (passageId: NodeId, interjectionId: NodeId): MutationResult | null => {
       if (!mutator) return null;
-      return mutator.removeInterjection(quoteId, interjectionId);
+      return mutator.removeInterjection(passageId, interjectionId);
     },
     [mutator]
   );
@@ -265,10 +265,10 @@ export function useDocumentMutations(): UseDocumentMutationsResult {
     deleteText,
     createParagraph,
     deleteNode,
-    createQuote,
-    removeQuote,
-    updateQuoteMetadata,
-    verifyQuote,
+    createPassage,
+    removePassage,
+    updatePassageMetadata,
+    verifyPassage,
     addInterjection,
     removeInterjection,
     splitParagraph,

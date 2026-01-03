@@ -13,7 +13,7 @@ import type {
   DocumentRootNode,
   ParagraphNode,
   TextNode,
-  QuoteBlockNode,
+  PassageNode,
 } from '../../../../shared/documentModel';
 
 // ============================================================================
@@ -58,7 +58,7 @@ function createTestState(): DocumentState {
       'para-1': { node: paragraph, parentId: 'root-1', path: ['root-1'] },
       'text-1': { node: textNode, parentId: 'para-1', path: ['root-1', 'para-1'] },
     },
-    quoteIndex: {
+    passageIndex: {
       byReference: {},
       byBook: {},
       all: [],
@@ -76,20 +76,20 @@ function createTestState(): DocumentState {
 }
 
 /**
- * Create a state with a quote for testing quote operations.
+ * Create a state with a passage for testing passage operations.
  */
-function createStateWithQuote(): DocumentState {
-  const quoteText: TextNode = {
-    id: 'quote-text-1',
+function createStateWithPassage(): DocumentState {
+  const passageText: TextNode = {
+    id: 'passage-text-1',
     type: 'text',
     version: 1,
     updatedAt: '2024-01-01T00:00:00.000Z',
     content: 'For God so loved the world...',
   };
 
-  const quote: QuoteBlockNode = {
-    id: 'quote-1',
-    type: 'quote_block',
+  const passage: PassageNode = {
+    id: 'passage-1',
+    type: 'passage',
     version: 1,
     updatedAt: '2024-01-01T00:00:00.000Z',
     metadata: {
@@ -112,7 +112,7 @@ function createStateWithQuote(): DocumentState {
       interjections: [],
       userVerified: false,
     },
-    children: [quoteText],
+    children: [passageText],
   };
 
   const paragraph: ParagraphNode = {
@@ -138,7 +138,7 @@ function createStateWithQuote(): DocumentState {
     updatedAt: '2024-01-01T00:00:00.000Z',
     title: 'Test Document',
     biblePassage: 'John 3',
-    children: [paragraph, quote],
+    children: [paragraph, passage],
   };
 
   return {
@@ -148,13 +148,13 @@ function createStateWithQuote(): DocumentState {
       'root-1': { node: root, parentId: null, path: [] },
       'para-1': { node: paragraph, parentId: 'root-1', path: ['root-1'] },
       'text-1': { node: paragraph.children[0]!, parentId: 'para-1', path: ['root-1', 'para-1'] },
-      'quote-1': { node: quote, parentId: 'root-1', path: ['root-1'] },
-      'quote-text-1': { node: quoteText, parentId: 'quote-1', path: ['root-1', 'quote-1'] },
+      'passage-1': { node: passage, parentId: 'root-1', path: ['root-1'] },
+      'passage-text-1': { node: passageText, parentId: 'passage-1', path: ['root-1', 'passage-1'] },
     },
-    quoteIndex: {
-      byReference: { 'John 3:16': ['quote-1'] },
-      byBook: { 'John': ['quote-1'] },
-      all: ['quote-1'],
+    passageIndex: {
+      byReference: { 'John 3:16': ['passage-1'] },
+      byBook: { 'John': ['passage-1'] },
+      all: ['passage-1'],
     },
     extracted: {
       references: ['John 3:16'],
@@ -344,69 +344,69 @@ describe('DocumentMutator - Node Mutations', () => {
 });
 
 // ============================================================================
-// QUOTE MUTATIONS
+// PASSAGE MUTATIONS
 // ============================================================================
 
-describe('DocumentMutator - Quote Mutations', () => {
+describe('DocumentMutator - Passage Mutations', () => {
   let mutator: DocumentMutator;
 
   beforeEach(() => {
-    mutator = new DocumentMutator(createStateWithQuote());
+    mutator = new DocumentMutator(createStateWithPassage());
   });
 
-  describe('verifyQuote', () => {
-    it('should verify a quote', () => {
-      const result = mutator.verifyQuote('quote-1', true, 'Verified by pastor');
+  describe('verifyPassage', () => {
+    it('should verify a passage', () => {
+      const result = mutator.verifyPassage('passage-1', true, 'Verified by pastor');
 
       expect(result.success).toBe(true);
-      const quote = mutator.getNodeById('quote-1') as QuoteBlockNode;
-      expect(quote.metadata.userVerified).toBe(true);
+      const passage = mutator.getNodeById('passage-1') as PassageNode;
+      expect(passage.metadata.userVerified).toBe(true);
     });
 
-    it('should unverify a quote', () => {
+    it('should unverify a passage', () => {
       // First verify
-      mutator.verifyQuote('quote-1', true);
+      mutator.verifyPassage('passage-1', true);
       
       // Then unverify
-      const result = mutator.verifyQuote('quote-1', false);
+      const result = mutator.verifyPassage('passage-1', false);
 
       expect(result.success).toBe(true);
-      const quote = mutator.getNodeById('quote-1') as QuoteBlockNode;
-      expect(quote.metadata.userVerified).toBe(false);
+      const passage = mutator.getNodeById('passage-1') as PassageNode;
+      expect(passage.metadata.userVerified).toBe(false);
     });
 
-    it('should return error for non-existent quote', () => {
-      const result = mutator.verifyQuote('non-existent', true);
+    it('should return error for non-existent passage', () => {
+      const result = mutator.verifyPassage('non-existent', true);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
     });
   });
 
-  describe('updateQuoteMetadata', () => {
-    it('should update quote metadata', () => {
-      const result = mutator.updateQuoteMetadata('quote-1', {
+  describe('updatePassageMetadata', () => {
+    it('should update passage metadata', () => {
+      const result = mutator.updatePassageMetadata('passage-1', {
         userVerified: true,
       });
 
       expect(result.success).toBe(true);
-      const quote = mutator.getNodeById('quote-1') as QuoteBlockNode;
-      expect(quote.metadata.userVerified).toBe(true);
+      const passage = mutator.getNodeById('passage-1') as PassageNode;
+      expect(passage.metadata.userVerified).toBe(true);
     });
   });
 
-  describe('removeQuote', () => {
-    it('should remove quote and insert replacement', () => {
-      const result = mutator.removeQuote('quote-1');
+  describe('removePassage', () => {
+    it('should remove passage and insert replacement', () => {
+      const result = mutator.removePassage('passage-1');
 
       expect(result.success).toBe(true);
-      expect(mutator.getNodeById('quote-1')).toBeUndefined();
+      expect(mutator.getNodeById('passage-1')).toBeUndefined();
     });
   });
 
-  describe('createQuote', () => {
-    it('should create new quote', () => {
-      const result = mutator.createQuote({
+  describe('createPassage', () => {
+    it('should create new passage', () => {
+      const result = mutator.createPassage({
         reference: 'Romans 8:28',
         book: 'Romans',
         chapter: 8,
@@ -417,10 +417,10 @@ describe('DocumentMutator - Quote Mutations', () => {
       });
 
       expect(result.success).toBe(true);
-      // Should have a new quote in the tree
+      // Should have a new passage in the tree
       const rootChildren = mutator.getRoot().children;
-      const newQuote = rootChildren.find(c => c.type === 'quote_block' && c.id !== 'quote-1');
-      expect(newQuote).toBeDefined();
+      const newPassage = rootChildren.find(c => c.type === 'passage' && c.id !== 'passage-1');
+      expect(newPassage).toBeDefined();
     });
   });
 });
@@ -433,19 +433,19 @@ describe('DocumentMutator - Interjection Mutations', () => {
   let mutator: DocumentMutator;
 
   beforeEach(() => {
-    mutator = new DocumentMutator(createStateWithQuote());
+    mutator = new DocumentMutator(createStateWithPassage());
   });
 
   describe('addInterjection', () => {
-    it('should add interjection to quote', () => {
-      const result = mutator.addInterjection('quote-1', '[emphasis]', 1);
+    it('should add interjection to passage', () => {
+      const result = mutator.addInterjection('passage-1', '[emphasis]', 1);
 
       expect(result.success).toBe(true);
-      const quote = mutator.getNodeById('quote-1') as QuoteBlockNode;
-      expect(quote.children.length).toBe(2); // Original text + interjection
+      const passage = mutator.getNodeById('passage-1') as PassageNode;
+      expect(passage.children.length).toBe(2); // Original text + interjection
     });
 
-    it('should return error for non-quote node', () => {
+    it('should return error for non-passage node', () => {
       const result = mutator.addInterjection('para-1', '[emphasis]', 0);
 
       expect(result.success).toBe(false);
@@ -454,18 +454,18 @@ describe('DocumentMutator - Interjection Mutations', () => {
   });
 
   describe('removeInterjection', () => {
-    it('should remove interjection from quote', () => {
+    it('should remove interjection from passage', () => {
       // First add an interjection
-      mutator.addInterjection('quote-1', '[emphasis]', 1);
-      const quote = mutator.getNodeById('quote-1') as QuoteBlockNode;
-      const interjectionId = quote.children.find(c => c.type === 'interjection')?.id;
+      mutator.addInterjection('passage-1', '[emphasis]', 1);
+      const passage = mutator.getNodeById('passage-1') as PassageNode;
+      const interjectionId = passage.children.find(c => c.type === 'interjection')?.id;
 
       // Then remove it
-      const result = mutator.removeInterjection('quote-1', interjectionId!);
+      const result = mutator.removeInterjection('passage-1', interjectionId!);
 
       expect(result.success).toBe(true);
-      const updatedQuote = mutator.getNodeById('quote-1') as QuoteBlockNode;
-      expect(updatedQuote.children.filter(c => c.type === 'interjection').length).toBe(0);
+      const updatedPassage = mutator.getNodeById('passage-1') as PassageNode;
+      expect(updatedPassage.children.filter(c => c.type === 'interjection').length).toBe(0);
     });
   });
 });
@@ -738,23 +738,23 @@ describe('DocumentMutator - Statistics', () => {
   let mutator: DocumentMutator;
 
   beforeEach(() => {
-    mutator = new DocumentMutator(createStateWithQuote());
+    mutator = new DocumentMutator(createStateWithPassage());
   });
 
   it('should provide document statistics', () => {
     const stats = mutator.getStatistics();
 
     expect(stats).toBeDefined();
-    expect(stats.quoteCount).toBe(1);
-    expect(stats.verifiedQuoteCount).toBe(0);
+    expect(stats.passageCount).toBe(1);
+    expect(stats.verifiedPassageCount).toBe(0);
     expect(stats.paragraphCount).toBeGreaterThanOrEqual(1);
   });
 
   it('should update statistics after mutations', () => {
-    mutator.verifyQuote('quote-1', true);
+    mutator.verifyPassage('passage-1', true);
     const stats = mutator.getStatistics();
 
-    expect(stats.verifiedQuoteCount).toBe(1);
+    expect(stats.verifiedPassageCount).toBe(1);
   });
 });
 
@@ -774,8 +774,8 @@ describe('DocumentMutator - Integration', () => {
     // Edit content
     mutator.updateText('text-1', 'Updated first paragraph');
 
-    // Create a quote
-    mutator.createQuote({
+    // Create a passage
+    mutator.createPassage({
       reference: 'John 3:16',
       book: 'John',
       chapter: 3,
@@ -785,24 +785,24 @@ describe('DocumentMutator - Integration', () => {
       index: 1,
     });
 
-    // Verify quote exists
-    const quotes = mutator.getRoot().children.filter(c => c.type === 'quote_block');
-    expect(quotes.length).toBe(1);
+    // Verify passage exists
+    const passages = mutator.getRoot().children.filter(c => c.type === 'passage');
+    expect(passages.length).toBe(1);
 
-    // Verify the quote
-    mutator.verifyQuote(quotes[0]!.id, true, 'Checked by pastor');
-    const verifiedQuote = mutator.getNodeById(quotes[0]!.id) as QuoteBlockNode;
-    expect(verifiedQuote.metadata.userVerified).toBe(true);
+    // Verify the passage
+    mutator.verifyPassage(passages[0]!.id, true, 'Checked by pastor');
+    const verifiedPassage = mutator.getNodeById(passages[0]!.id) as PassageNode;
+    expect(verifiedPassage.metadata.userVerified).toBe(true);
 
     // Undo the verification
     mutator.undo();
-    const unverifiedQuote = mutator.getNodeById(quotes[0]!.id) as QuoteBlockNode;
-    expect(unverifiedQuote.metadata.userVerified).toBe(false);
+    const unverifiedPassage = mutator.getNodeById(passages[0]!.id) as PassageNode;
+    expect(unverifiedPassage.metadata.userVerified).toBe(false);
 
     // Redo
     mutator.redo();
-    const reVerifiedQuote = mutator.getNodeById(quotes[0]!.id) as QuoteBlockNode;
-    expect(reVerifiedQuote.metadata.userVerified).toBe(true);
+    const reVerifiedPassage = mutator.getNodeById(passages[0]!.id) as PassageNode;
+    expect(reVerifiedPassage.metadata.userVerified).toBe(true);
   });
 
   it('should maintain consistency after many operations', () => {

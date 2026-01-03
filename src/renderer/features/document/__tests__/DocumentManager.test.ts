@@ -18,7 +18,7 @@ import type {
   DocumentRootNode,
   ParagraphNode,
   TextNode,
-  QuoteBlockNode,
+  PassageNode,
   InterjectionNode,
 } from '../../../../shared/documentModel';
 
@@ -67,18 +67,18 @@ function createInterjectionNode(id: string, content: string, metadataId: string)
 }
 
 /**
- * Create a test QuoteBlockNode.
+ * Create a test PassageNode.
  */
-function createQuoteBlockNode(
+function createPassageNode(
   id: string,
   children: (TextNode | InterjectionNode)[],
   reference: string,
   book: string,
   confidence: number = 0.85
-): QuoteBlockNode {
+): PassageNode {
   return {
     id,
-    type: 'quote_block',
+    type: 'passage',
     version: 1,
     updatedAt: new Date().toISOString(),
     metadata: {
@@ -118,8 +118,8 @@ function createTestDocumentState(): DocumentState {
   const interjection1 = createInterjectionNode('interj-0001', 'amen', 'meta-0001');
 
   const para1 = createParagraphNode('para-0001', [textNode1]);
-  const quote1 = createQuoteBlockNode(
-    'quote-0001',
+  const passage1 = createPassageNode(
+    'passage-0001',
     [textNode2, interjection1],
     'Matthew 5:3',
     'Matthew',
@@ -134,7 +134,7 @@ function createTestDocumentState(): DocumentState {
     updatedAt: now,
     title: 'Test Sermon',
     biblePassage: 'Matthew 5:1-12',
-    children: [para1, quote1, para2],
+    children: [para1, passage1, para2],
   };
 
   // Build node index
@@ -142,22 +142,22 @@ function createTestDocumentState(): DocumentState {
     'doc-root': { node: root, parentId: null, path: [] },
     'para-0001': { node: para1, parentId: 'doc-root', path: ['doc-root'] },
     'text-0001': { node: textNode1, parentId: 'para-0001', path: ['doc-root', 'para-0001'] },
-    'quote-0001': { node: quote1, parentId: 'doc-root', path: ['doc-root'] },
-    'text-0002': { node: textNode2, parentId: 'quote-0001', path: ['doc-root', 'quote-0001'] },
+    'passage-0001': { node: passage1, parentId: 'doc-root', path: ['doc-root'] },
+    'text-0002': { node: textNode2, parentId: 'passage-0001', path: ['doc-root', 'passage-0001'] },
     'interj-0001': {
       node: interjection1,
-      parentId: 'quote-0001',
-      path: ['doc-root', 'quote-0001'],
+      parentId: 'passage-0001',
+      path: ['doc-root', 'passage-0001'],
     },
     'para-0002': { node: para2, parentId: 'doc-root', path: ['doc-root'] },
     'text-0003': { node: textNode3, parentId: 'para-0002', path: ['doc-root', 'para-0002'] },
   };
 
-  // Build quote index
-  const quoteIndex: DocumentState['quoteIndex'] = {
-    byReference: { 'Matthew 5:3': ['quote-0001'] },
-    byBook: { Matthew: ['quote-0001'] },
-    all: ['quote-0001'],
+  // Build passage index
+  const passageIndex: DocumentState['passageIndex'] = {
+    byReference: { 'Matthew 5:3': ['passage-0001'] },
+    byBook: { Matthew: ['passage-0001'] },
+    all: ['passage-0001'],
   };
 
   return {
@@ -167,7 +167,7 @@ function createTestDocumentState(): DocumentState {
     undoStack: [],
     redoStack: [],
     nodeIndex,
-    quoteIndex,
+    passageIndex,
     extracted: {
       references: ['Matthew 5:3'],
       tags: ['sermon', 'beatitudes'],
@@ -307,48 +307,48 @@ describe('DocumentManager', () => {
     });
   });
 
-  describe('quote lookups', () => {
+  describe('passage lookups', () => {
     let manager: DocumentManager;
 
     beforeEach(() => {
       manager = new DocumentManager(createTestDocumentState());
     });
 
-    it('should get all quotes', () => {
-      const quotes = manager.getAllQuotes();
-      expect(quotes.length).toBe(1);
-      expect(quotes[0]!.id).toBe('quote-0001');
+    it('should get all passages', () => {
+      const passages = manager.getAllPassages();
+      expect(passages.length).toBe(1);
+      expect(passages[0]!.id).toBe('passage-0001');
     });
 
-    it('should get quote by ID', () => {
-      const quote = manager.getQuoteById('quote-0001');
-      expect(quote).toBeDefined();
-      expect(quote?.metadata.reference?.normalizedReference).toBe('Matthew 5:3');
+    it('should get passage by ID', () => {
+      const passage = manager.getPassageById('passage-0001');
+      expect(passage).toBeDefined();
+      expect(passage?.metadata.reference?.normalizedReference).toBe('Matthew 5:3');
     });
 
-    it('should return undefined for non-quote node ID', () => {
-      const quote = manager.getQuoteById('para-0001');
-      expect(quote).toBeUndefined();
+    it('should return undefined for non-passage node ID', () => {
+      const passage = manager.getPassageById('para-0001');
+      expect(passage).toBeUndefined();
     });
 
-    it('should get quotes by reference', () => {
-      const quotes = manager.getQuotesByReference('Matthew 5:3');
-      expect(quotes.length).toBe(1);
-      expect(quotes[0]!.id).toBe('quote-0001');
+    it('should get passages by reference', () => {
+      const passages = manager.getPassagesByReference('Matthew 5:3');
+      expect(passages.length).toBe(1);
+      expect(passages[0]!.id).toBe('passage-0001');
     });
 
     it('should return empty array for unknown reference', () => {
-      const quotes = manager.getQuotesByReference('John 3:16');
-      expect(quotes.length).toBe(0);
+      const passages = manager.getPassagesByReference('John 3:16');
+      expect(passages.length).toBe(0);
     });
 
-    it('should get quotes by book', () => {
-      const quotes = manager.getQuotesByBook('Matthew');
-      expect(quotes.length).toBe(1);
+    it('should get passages by book', () => {
+      const passages = manager.getPassagesByBook('Matthew');
+      expect(passages.length).toBe(1);
     });
 
-    it('should get quote metadata', () => {
-      const metadata = manager.getQuoteMetadata('quote-0001');
+    it('should get passage metadata', () => {
+      const metadata = manager.getPassageMetadata('passage-0001');
       expect(metadata).toBeDefined();
       expect(metadata?.reference?.book).toBe('Matthew');
       expect(metadata?.detection?.confidence).toBe(0.92);
@@ -369,8 +369,8 @@ describe('DocumentManager', () => {
       const texts = manager.getNodesByType('text');
       expect(texts.length).toBe(3);
 
-      const quotes = manager.getNodesByType('quote_block');
-      expect(quotes.length).toBe(1);
+      const passages = manager.getNodesByType('passage');
+      expect(passages.length).toBe(1);
 
       const interjections = manager.getNodesByType('interjection');
       expect(interjections.length).toBe(1);
@@ -401,7 +401,7 @@ describe('DocumentManager', () => {
       expect(visited).toContain('doc-root');
       expect(visited).toContain('para-0001');
       expect(visited).toContain('text-0001');
-      expect(visited).toContain('quote-0001');
+      expect(visited).toContain('passage-0001');
       expect(visited).toContain('text-0002');
       expect(visited).toContain('interj-0001');
       expect(visited).toContain('para-0002');
@@ -412,13 +412,13 @@ describe('DocumentManager', () => {
       const visited: string[] = [];
       manager.traverse((node): void | false => {
         visited.push(node.id);
-        if (node.type === 'quote_block') return false;
+        if (node.type === 'passage') return false;
       });
 
       expect(visited).toContain('doc-root');
       expect(visited).toContain('para-0001');
-      expect(visited).toContain('quote-0001');
-      // Should not include quote children or subsequent nodes
+      expect(visited).toContain('passage-0001');
+      // Should not include passage children or subsequent nodes
       expect(visited).not.toContain('text-0002');
     });
 
@@ -464,8 +464,8 @@ describe('DocumentManager', () => {
       expect(text).toBe('Hello, this is a test paragraph.');
     });
 
-    it('should get quote text including children', () => {
-      const text = manager.getNodeText('quote-0001');
+    it('should get passage text including children', () => {
+      const text = manager.getNodeText('passage-0001');
       expect(text).toContain('Blessed are the poor in spirit.');
       expect(text).toContain('amen');
     });
@@ -487,7 +487,7 @@ describe('DocumentManager', () => {
     it('should return document statistics', () => {
       const stats = manager.getStatistics();
       expect(stats.paragraphCount).toBe(2);
-      expect(stats.quoteCount).toBe(1);
+      expect(stats.passageCount).toBe(1);
       expect(stats.interjectionCount).toBe(1);
       expect(stats.wordCount).toBeGreaterThan(0);
       expect(stats.characterCount).toBeGreaterThan(0);

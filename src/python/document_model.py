@@ -138,8 +138,8 @@ class InterjectionMetadata:
 
 
 @dataclass
-class QuoteMetadata:
-    """Complete metadata for a Bible quote block."""
+class PassageMetadata:
+    """Complete metadata for a Bible passage block."""
     reference: BibleReferenceMetadata
     detection: QuoteDetectionMetadata
     interjections: List[InterjectionMetadata] = field(default_factory=list)
@@ -222,97 +222,73 @@ class InterjectionNode(BaseNode):
 
 @dataclass
 class ParagraphNode(BaseNode):
-    """Paragraph node - container for inline content."""
-    children: List[Union['TextNode', 'InterjectionNode', 'QuoteBlockNode']]
+    """
+    Paragraph node - container for inline content.
     
-    def __init__(self, children: Optional[List[Any]] = None, id: Optional[NodeId] = None, version: Version = 1):
+    Formatting properties:
+    - headingLevel: 1-3 for heading styling (renders as h1/h2/h3)
+    - listStyle: 'bullet' or 'ordered' for list item styling
+    - listNumber: Item number for ordered lists
+    - listDepth: Nesting depth for nested lists
+    - textAlign: Text alignment ('left', 'center', 'right')
+    """
+    children: List[Union['TextNode', 'InterjectionNode', 'PassageNode']]
+    heading_level: Optional[int] = None  # 1, 2, or 3 for headings
+    list_style: Optional[str] = None  # 'bullet' or 'ordered'
+    list_number: Optional[int] = None  # For ordered lists
+    list_depth: Optional[int] = None  # For nested lists
+    text_align: Optional[str] = None  # 'left', 'center', 'right'
+    
+    def __init__(
+        self, 
+        children: Optional[List[Any]] = None, 
+        id: Optional[NodeId] = None, 
+        version: Version = 1,
+        heading_level: Optional[int] = None,
+        list_style: Optional[str] = None,
+        list_number: Optional[int] = None,
+        list_depth: Optional[int] = None,
+        text_align: Optional[str] = None
+    ):
         self.id = id or generate_node_id()
         self.type = 'paragraph'
         self.version = version
         self.updated_at = now_iso()
         self.children = children or []
+        self.heading_level = heading_level
+        self.list_style = list_style
+        self.list_number = list_number
+        self.list_depth = list_depth
+        self.text_align = text_align
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             **self.base_dict(),
             'children': [c.to_dict() for c in self.children],
         }
+        if self.heading_level is not None:
+            result['headingLevel'] = self.heading_level
+        if self.list_style is not None:
+            result['listStyle'] = self.list_style
+        if self.list_number is not None:
+            result['listNumber'] = self.list_number
+        if self.list_depth is not None:
+            result['listDepth'] = self.list_depth
+        if self.text_align is not None:
+            result['textAlign'] = self.text_align
+        return result
 
 
 @dataclass
-class HeadingNode(BaseNode):
-    """Heading node for section titles."""
-    level: int  # 1-6
-    children: List[Any]
-    
-    def __init__(self, level: int, children: Optional[List[Any]] = None, id: Optional[NodeId] = None, version: Version = 1):
-        self.id = id or generate_node_id()
-        self.type = 'heading'
-        self.version = version
-        self.updated_at = now_iso()
-        self.level = level
-        self.children = children or []
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            **self.base_dict(),
-            'level': self.level,
-            'children': [c.to_dict() for c in self.children],
-        }
-
-
-@dataclass
-class ListItemNode(BaseNode):
-    """List item node."""
-    children: List[Any]
-    
-    def __init__(self, children: Optional[List[Any]] = None, id: Optional[NodeId] = None, version: Version = 1):
-        self.id = id or generate_node_id()
-        self.type = 'list_item'
-        self.version = version
-        self.updated_at = now_iso()
-        self.children = children or []
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            **self.base_dict(),
-            'children': [c.to_dict() for c in self.children],
-        }
-
-
-@dataclass
-class ListNode(BaseNode):
-    """List node for ordered/unordered lists."""
-    ordered: bool
-    children: List[ListItemNode]
-    
-    def __init__(self, ordered: bool = False, children: Optional[List[ListItemNode]] = None, 
-                 id: Optional[NodeId] = None, version: Version = 1):
-        self.id = id or generate_node_id()
-        self.type = 'list'
-        self.version = version
-        self.updated_at = now_iso()
-        self.ordered = ordered
-        self.children = children or []
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            **self.base_dict(),
-            'ordered': self.ordered,
-            'children': [c.to_dict() for c in self.children],
-        }
-
-
-@dataclass
-class QuoteBlockNode(BaseNode):
-    """Quote block node - contains the Bible quote with full metadata."""
-    metadata: QuoteMetadata
+class PassageNode(BaseNode):
+    """Passage node - contains the Bible passage with full metadata."""
+    metadata: PassageMetadata
     children: List[Union[TextNode, InterjectionNode]]
     
-    def __init__(self, metadata: QuoteMetadata, children: Optional[List[Any]] = None,
+    def __init__(self, metadata: PassageMetadata, children: Optional[List[Any]] = None,
                  id: Optional[NodeId] = None, version: Version = 1):
         self.id = id or generate_node_id()
-        self.type = 'quote_block'
+        self.type = 'passage'
         self.version = version
         self.updated_at = now_iso()
         self.metadata = metadata
@@ -326,13 +302,19 @@ class QuoteBlockNode(BaseNode):
         }
 
 
+# Backwards compatibility aliases
+QuoteBlockNode = PassageNode
+QuoteNode = PassageNode
+QuoteMetadata = PassageMetadata
+
+
 @dataclass
 class DocumentRootNode(BaseNode):
     """Root document node."""
     title: Optional[str]
     bible_passage: Optional[str]
     speaker: Optional[str]
-    children: List[Any]  # ParagraphNode, QuoteBlockNode, HeadingNode, etc.
+    children: List[Any]  # ParagraphNode, PassageNode, etc.
     
     def __init__(self, children: Optional[List[Any]] = None, title: Optional[str] = None,
                  bible_passage: Optional[str] = None, speaker: Optional[str] = None,
@@ -361,15 +343,15 @@ class DocumentRootNode(BaseNode):
 
 
 # Type alias for any document node
+# Valid types: document, paragraph, text, passage, interjection
+# Headings are paragraphs with headingLevel (1-3)
+# Lists are paragraphs with listStyle/listNumber/listDepth
 DocumentNode = Union[
     DocumentRootNode,
     ParagraphNode,
     TextNode,
-    QuoteBlockNode,
+    PassageNode,
     InterjectionNode,
-    HeadingNode,
-    ListNode,
-    ListItemNode
 ]
 
 
@@ -453,20 +435,20 @@ class NodeCreatedEvent(BaseEvent):
         }
 
 
-class QuoteCreatedEvent(BaseEvent):
-    """Event for quote creation."""
+class PassageCreatedEvent(BaseEvent):
+    """Event for passage creation."""
     
-    def __init__(self, quote: QuoteBlockNode, parent_id: NodeId, index: int,
+    def __init__(self, passage: PassageNode, parent_id: NodeId, index: int,
                  replaced_node_ids: List[NodeId], resulting_version: Version,
                  source: Optional[Literal['system', 'user', 'import']] = 'system'):
         super().__init__(
             id=generate_event_id(),
-            type='quote_created',
+            type='passage_created',
             timestamp=now_iso(),
             resulting_version=resulting_version,
             source=source
         )
-        self.quote = quote
+        self.passage = passage
         self.parent_id = parent_id
         self.index = index
         self.replaced_node_ids = replaced_node_ids
@@ -474,11 +456,15 @@ class QuoteCreatedEvent(BaseEvent):
     def to_dict(self) -> Dict[str, Any]:
         return {
             **self.base_dict(),
-            'quote': self.quote.to_dict(),
+            'passage': self.passage.to_dict(),
             'parentId': self.parent_id,
             'index': self.index,
             'replacedNodeIds': self.replaced_node_ids,
         }
+
+
+# Backwards compatibility alias
+QuoteCreatedEvent = PassageCreatedEvent
 
 
 # Type alias for any event
@@ -510,11 +496,11 @@ class NodeIndexEntry:
 
 
 @dataclass
-class QuoteIndex:
-    """Index for fast quote lookups."""
-    by_reference: Dict[str, List[NodeId]] = field(default_factory=dict)  # normalized reference -> quote IDs
-    by_book: Dict[str, List[NodeId]] = field(default_factory=dict)  # book name -> quote IDs
-    all: List[NodeId] = field(default_factory=list)  # all quote IDs in document order
+class PassageIndex:
+    """Index for fast passage lookups."""
+    by_reference: Dict[str, List[NodeId]] = field(default_factory=dict)  # normalized reference -> passage IDs
+    by_book: Dict[str, List[NodeId]] = field(default_factory=dict)  # book name -> passage IDs
+    all: List[NodeId] = field(default_factory=list)  # all passage IDs in document order
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -522,6 +508,10 @@ class QuoteIndex:
             'byBook': self.by_book,
             'all': self.all,
         }
+
+
+# Backwards compatibility alias
+QuoteIndex = PassageIndex
 
 
 @dataclass
@@ -550,7 +540,7 @@ class DocumentState:
     undo_stack: List[EventId]
     redo_stack: List[EventId]
     node_index: Dict[NodeId, NodeIndexEntry]
-    quote_index: QuoteIndex
+    passage_index: PassageIndex
     extracted: ExtractedReferences
     last_modified: str
     created_at: str
@@ -564,7 +554,7 @@ class DocumentState:
         self.undo_stack = []
         self.redo_stack = []
         self.node_index = {}
-        self.quote_index = QuoteIndex()
+        self.passage_index = PassageIndex()
         self.extracted = extracted or ExtractedReferences()
         self.last_modified = now_iso()
         self.created_at = now_iso()
@@ -573,9 +563,9 @@ class DocumentState:
         self._build_indexes()
     
     def _build_indexes(self):
-        """Build node and quote indexes from the document tree."""
+        """Build node and passage indexes from the document tree."""
         self.node_index = {}
-        self.quote_index = QuoteIndex()
+        self.passage_index = PassageIndex()
         
         def index_node(node: Any, parent_id: Optional[NodeId], path: List[NodeId]):
             self.node_index[node.id] = NodeIndexEntry(
@@ -584,19 +574,19 @@ class DocumentState:
                 path=path
             )
             
-            # Index quotes
-            if hasattr(node, 'type') and node.type == 'quote_block':
-                self.quote_index.all.append(node.id)
+            # Index passages (type is 'passage')
+            if hasattr(node, 'type') and node.type == 'passage':
+                self.passage_index.all.append(node.id)
                 ref = node.metadata.reference.normalized_reference
                 book = node.metadata.reference.book
                 
-                if ref not in self.quote_index.by_reference:
-                    self.quote_index.by_reference[ref] = []
-                self.quote_index.by_reference[ref].append(node.id)
+                if ref not in self.passage_index.by_reference:
+                    self.passage_index.by_reference[ref] = []
+                self.passage_index.by_reference[ref].append(node.id)
                 
-                if book not in self.quote_index.by_book:
-                    self.quote_index.by_book[book] = []
-                self.quote_index.by_book[book].append(node.id)
+                if book not in self.passage_index.by_book:
+                    self.passage_index.by_book[book] = []
+                self.passage_index.by_book[book].append(node.id)
             
             # Recurse into children
             if hasattr(node, 'children'):
@@ -613,7 +603,7 @@ class DocumentState:
             'undoStack': self.undo_stack,
             'redoStack': self.redo_stack,
             'nodeIndex': {k: v.to_dict() for k, v in self.node_index.items()},
-            'quoteIndex': self.quote_index.to_dict(),
+            'passageIndex': self.passage_index.to_dict(),
             'extracted': self.extracted.to_dict(),
             'lastModified': self.last_modified,
             'createdAt': self.created_at,
@@ -633,7 +623,7 @@ class ProcessingMetadata:
     """Metadata about the AST building process."""
     stage_times: Dict[str, float] = field(default_factory=dict)  # stage name -> ms
     total_time: float = 0.0
-    quote_count: int = 0
+    passage_count: int = 0
     paragraph_count: int = 0
     interjection_count: int = 0
     
@@ -641,7 +631,7 @@ class ProcessingMetadata:
         return {
             'stageTimes': self.stage_times,
             'totalTime': self.total_time,
-            'quoteCount': self.quote_count,
+            'passageCount': self.passage_count,
             'paragraphCount': self.paragraph_count,
             'interjectionCount': self.interjection_count,
         }
@@ -678,13 +668,13 @@ def create_paragraph_node(children: Optional[List[Any]] = None) -> ParagraphNode
     return ParagraphNode(children=children)
 
 
-def create_quote_block_node(
+def create_passage_node(
     content: str,
     reference: BibleReferenceMetadata,
     detection: QuoteDetectionMetadata,
     interjections: Optional[List[InterjectionMetadata]] = None
-) -> QuoteBlockNode:
-    """Create a new quote block node with text content."""
+) -> PassageNode:
+    """Create a new passage node with text content."""
     # Build children from content and interjections
     children: List[Union[TextNode, InterjectionNode]] = []
     
@@ -719,13 +709,18 @@ def create_quote_block_node(
         if content:
             children.append(TextNode(content=content))
     
-    metadata = QuoteMetadata(
+    metadata = PassageMetadata(
         reference=reference,
         detection=detection,
         interjections=interjections or []
     )
     
-    return QuoteBlockNode(metadata=metadata, children=children)
+    return PassageNode(metadata=metadata, children=children)
+
+
+# Backwards compatibility aliases
+create_quote_node = create_passage_node
+create_quote_block_node = create_passage_node
 
 
 def create_document_root(

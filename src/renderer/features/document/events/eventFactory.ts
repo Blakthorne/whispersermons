@@ -20,18 +20,18 @@ import type {
   DocumentState,
   ParagraphNode,
   TextNode,
-  QuoteBlockNode,
+  PassageNode,
   InterjectionNode,
-  QuoteMetadata,
+  PassageMetadata,
   NodeCreatedEvent,
   NodeDeletedEvent,
   NodeMovedEvent,
   TextChangedEvent,
   ContentReplacedEvent,
-  QuoteCreatedEvent,
-  QuoteRemovedEvent,
-  QuoteMetadataUpdatedEvent,
-  QuoteVerifiedEvent,
+  PassageCreatedEvent,
+  PassageRemovedEvent,
+  PassageMetadataUpdatedEvent,
+  PassageVerifiedEvent,
   InterjectionAddedEvent,
   InterjectionRemovedEvent,
   NodesJoinedEvent,
@@ -224,27 +224,27 @@ export function createContentReplacedEvent(
 }
 
 // ============================================================================
-// QUOTE-SPECIFIC EVENTS
+// PASSAGE-SPECIFIC EVENTS (Bible Passages)
 // ============================================================================
 
 /**
- * Create a QuoteCreatedEvent.
+ * Create a PassageCreatedEvent.
  */
-export function createQuoteCreatedEvent(
-  quote: QuoteBlockNode,
+export function createPassageCreatedEvent(
+  passage: PassageNode,
   parentId: NodeId,
   index: number,
   replacedNodeIds: NodeId[],
   resultingVersion: Version,
   source: EventSource = 'user'
-): QuoteCreatedEvent {
+): PassageCreatedEvent {
   return {
     id: createEventId(),
-    type: 'quote_created',
+    type: 'passage_created',
     timestamp: createTimestamp(),
     resultingVersion,
     source,
-    quote,
+    passage,
     parentId,
     index,
     replacedNodeIds,
@@ -252,45 +252,45 @@ export function createQuoteCreatedEvent(
 }
 
 /**
- * Create a QuoteRemovedEvent.
+ * Create a PassageRemovedEvent.
  */
-export function createQuoteRemovedEvent(
-  quoteId: NodeId,
-  removedQuote: QuoteBlockNode,
+export function createPassageRemovedEvent(
+  passageId: NodeId,
+  removedPassage: PassageNode,
   replacementNodes: DocumentNode[],
   resultingVersion: Version,
   source: EventSource = 'user'
-): QuoteRemovedEvent {
+): PassageRemovedEvent {
   return {
     id: createEventId(),
-    type: 'quote_removed',
+    type: 'passage_removed',
     timestamp: createTimestamp(),
     resultingVersion,
     source,
-    quoteId,
-    removedQuote,
+    passageId,
+    removedPassage,
     replacementNodes,
   };
 }
 
 /**
- * Create a QuoteMetadataUpdatedEvent.
+ * Create a PassageMetadataUpdatedEvent.
  */
-export function createQuoteMetadataUpdatedEvent(
-  quoteId: NodeId,
-  previousMetadata: QuoteMetadata,
-  newMetadata: QuoteMetadata,
-  changedFields: (keyof QuoteMetadata)[],
+export function createPassageMetadataUpdatedEvent(
+  passageId: NodeId,
+  previousMetadata: PassageMetadata,
+  newMetadata: PassageMetadata,
+  changedFields: (keyof PassageMetadata)[],
   resultingVersion: Version,
   source: EventSource = 'user'
-): QuoteMetadataUpdatedEvent {
+): PassageMetadataUpdatedEvent {
   return {
     id: createEventId(),
-    type: 'quote_metadata_updated',
+    type: 'passage_metadata_updated',
     timestamp: createTimestamp(),
     resultingVersion,
     source,
-    quoteId,
+    passageId,
     previousMetadata,
     newMetadata,
     changedFields,
@@ -298,22 +298,22 @@ export function createQuoteMetadataUpdatedEvent(
 }
 
 /**
- * Create a QuoteVerifiedEvent.
+ * Create a PassageVerifiedEvent.
  */
-export function createQuoteVerifiedEvent(
-  quoteId: NodeId,
+export function createPassageVerifiedEvent(
+  passageId: NodeId,
   verified: boolean,
   notes: string | undefined,
   resultingVersion: Version,
   source: EventSource = 'user'
-): QuoteVerifiedEvent {
+): PassageVerifiedEvent {
   return {
     id: createEventId(),
-    type: 'quote_verified',
+    type: 'passage_verified',
     timestamp: createTimestamp(),
     resultingVersion,
     source,
-    quoteId,
+    passageId,
     verified,
     notes,
   };
@@ -323,7 +323,7 @@ export function createQuoteVerifiedEvent(
  * Create an InterjectionAddedEvent.
  */
 export function createInterjectionAddedEvent(
-  quoteId: NodeId,
+  passageId: NodeId,
   interjection: InterjectionNode,
   index: number,
   resultingVersion: Version,
@@ -335,7 +335,7 @@ export function createInterjectionAddedEvent(
     timestamp: createTimestamp(),
     resultingVersion,
     source,
-    quoteId,
+    passageId,
     interjection,
     index,
   };
@@ -345,7 +345,7 @@ export function createInterjectionAddedEvent(
  * Create an InterjectionRemovedEvent.
  */
 export function createInterjectionRemovedEvent(
-  quoteId: NodeId,
+  passageId: NodeId,
   interjectionId: NodeId,
   removedInterjection: InterjectionNode,
   previousIndex: number,
@@ -358,7 +358,7 @@ export function createInterjectionRemovedEvent(
     timestamp: createTimestamp(),
     resultingVersion,
     source,
-    quoteId,
+    passageId,
     interjectionId,
     removedInterjection,
     previousIndex,
@@ -644,24 +644,24 @@ export function generateInverseEvents(
         ),
       ];
 
-    case 'quote_created':
-      // Remove the quote and restore original nodes
+    case 'passage_created':
+      // Remove the passage and restore original nodes
       return [
-        createQuoteRemovedEvent(
-          event.quote.id,
-          event.quote,
+        createPassageRemovedEvent(
+          event.passage.id,
+          event.passage,
           [], // Original nodes would need to be stored - simplified for now
           nextVersion,
           'user'
         ),
       ];
 
-    case 'quote_removed':
-      // Recreate the quote
+    case 'passage_removed':
+      // Recreate the passage
       return [
-        createQuoteCreatedEvent(
-          event.removedQuote,
-          event.removedQuote.id, // Need parent ID - this is simplified
+        createPassageCreatedEvent(
+          event.removedPassage,
+          event.removedPassage.id, // Need parent ID - this is simplified
           0, // Need original index
           [],
           nextVersion,
@@ -669,10 +669,10 @@ export function generateInverseEvents(
         ),
       ];
 
-    case 'quote_metadata_updated':
+    case 'passage_metadata_updated':
       return [
-        createQuoteMetadataUpdatedEvent(
-          event.quoteId,
+        createPassageMetadataUpdatedEvent(
+          event.passageId,
           event.newMetadata,
           event.previousMetadata,
           event.changedFields,
@@ -681,15 +681,15 @@ export function generateInverseEvents(
         ),
       ];
 
-    case 'quote_verified':
+    case 'passage_verified':
       return [
-        createQuoteVerifiedEvent(event.quoteId, !event.verified, undefined, nextVersion, 'user'),
+        createPassageVerifiedEvent(event.passageId, !event.verified, undefined, nextVersion, 'user'),
       ];
 
     case 'interjection_added':
       return [
         createInterjectionRemovedEvent(
-          event.quoteId,
+          event.passageId,
           event.interjection.id,
           event.interjection,
           event.index,
@@ -701,7 +701,7 @@ export function generateInverseEvents(
     case 'interjection_removed':
       return [
         createInterjectionAddedEvent(
-          event.quoteId,
+          event.passageId,
           event.removedInterjection,
           event.previousIndex,
           nextVersion,
@@ -818,7 +818,7 @@ export function createDocumentRootNode(
 export function createDocumentState(root: DocumentRootNode): DocumentState {
   // Build node index
   const nodeIndex: DocumentState['nodeIndex'] = {};
-  const quoteIndex: DocumentState['quoteIndex'] = {
+  const passageIndex: DocumentState['passageIndex'] = {
     byReference: {},
     byBook: {},
     all: [],
@@ -831,23 +831,23 @@ export function createDocumentState(root: DocumentRootNode): DocumentState {
       path: [...path],
     };
 
-    // Index quotes
-    if (node.type === 'quote_block') {
-      const quote = node as QuoteBlockNode;
-      const ref = quote.metadata.reference?.normalizedReference ?? 'Unknown';
-      const book = quote.metadata.reference?.book ?? 'Unknown';
+    // Index passages (Bible passages)
+    if (node.type === 'passage') {
+      const passage = node as PassageNode;
+      const ref = passage.metadata.reference?.normalizedReference ?? 'Unknown';
+      const book = passage.metadata.reference?.book ?? 'Unknown';
 
-      if (!quoteIndex.byReference[ref]) {
-        quoteIndex.byReference[ref] = [];
+      if (!passageIndex.byReference[ref]) {
+        passageIndex.byReference[ref] = [];
       }
-      quoteIndex.byReference[ref].push(node.id);
+      passageIndex.byReference[ref].push(node.id);
 
-      if (!quoteIndex.byBook[book]) {
-        quoteIndex.byBook[book] = [];
+      if (!passageIndex.byBook[book]) {
+        passageIndex.byBook[book] = [];
       }
-      quoteIndex.byBook[book].push(node.id);
+      passageIndex.byBook[book].push(node.id);
 
-      quoteIndex.all.push(node.id);
+      passageIndex.all.push(node.id);
     }
 
     // Index children
@@ -872,7 +872,7 @@ export function createDocumentState(root: DocumentRootNode): DocumentState {
     root,
     version: 1,
     nodeIndex,
-    quoteIndex,
+    passageIndex,
     extracted: {
       references: [],
       tags: [],

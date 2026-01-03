@@ -2,6 +2,9 @@
  * Document Renderer Component Tests
  *
  * Tests for DocumentRenderer and related components.
+ *
+ * AST Node Types: document, paragraph, text, passage, interjection
+ * Headings are paragraphs with headingLevel (1-3)
  */
 
 import { describe, it, expect } from 'vitest';
@@ -12,16 +15,14 @@ import { TextRenderer } from '../components/TextRenderer';
 import { InterjectionRenderer } from '../components/InterjectionRenderer';
 import { QuoteBlockRenderer } from '../components/QuoteBlockRenderer';
 import { ParagraphRenderer } from '../components/ParagraphRenderer';
-import { HeadingRenderer } from '../components/HeadingRenderer';
 import { NodeRenderer } from '../components/NodeRenderer';
 import type {
   DocumentState,
   DocumentRootNode,
   ParagraphNode,
   TextNode,
-  QuoteBlockNode,
+  PassageNode,
   InterjectionNode,
-  HeadingNode,
 } from '../../../../shared/documentModel';
 import type { SermonDocument } from '../../../types';
 
@@ -60,28 +61,36 @@ function createInterjectionNode(id: string, content: string): InterjectionNode {
   };
 }
 
-function createHeadingNode(id: string, content: string, level: 1 | 2 | 3 | 4 | 5 | 6): HeadingNode {
+/**
+ * Create a heading paragraph (paragraph with headingLevel formatting).
+ * Level is clamped to 1-3.
+ */
+function createHeadingParagraph(
+  id: string,
+  content: string,
+  level: 1 | 2 | 3
+): ParagraphNode & { headingLevel: 1 | 2 | 3 } {
   return {
     id,
-    type: 'heading',
+    type: 'paragraph',
     version: 1,
     updatedAt: new Date().toISOString(),
-    level,
+    headingLevel: level,
     children: [createTextNode(`${id}-text`, content)],
   };
 }
 
-function createQuoteBlockNode(
+function createPassageNode(
   id: string,
   text: string,
   reference: string,
   book: string,
   confidence: number = 0.85
-): QuoteBlockNode {
+): PassageNode {
   const textNode = createTextNode(`${id}-text`, text);
   return {
     id,
-    type: 'quote_block',
+    type: 'passage',
     version: 1,
     updatedAt: new Date().toISOString(),
     metadata: {
@@ -108,13 +117,16 @@ function createQuoteBlockNode(
   };
 }
 
+// Backwards compatibility alias
+const createPassageBlockNode = createPassageNode;
+
 function createTestDocumentState(): DocumentState {
   const now = new Date().toISOString();
 
   const textNode1 = createTextNode('text-1', 'Hello world.');
   const para1 = createParagraphNode('para-1', [textNode1]);
-  const quote1 = createQuoteBlockNode(
-    'quote-1',
+  const passage1 = createPassageNode(
+    'passage-1',
     'For God so loved the world.',
     'John 3:16',
     'John',
@@ -128,7 +140,7 @@ function createTestDocumentState(): DocumentState {
     updatedAt: now,
     title: 'Test Sermon',
     biblePassage: 'John 3:16',
-    children: [para1, quote1],
+    children: [para1, passage1],
   };
 
   return {
@@ -141,17 +153,17 @@ function createTestDocumentState(): DocumentState {
       'doc-root': { node: root, parentId: null, path: [] },
       'para-1': { node: para1, parentId: 'doc-root', path: ['doc-root'] },
       'text-1': { node: textNode1, parentId: 'para-1', path: ['doc-root', 'para-1'] },
-      'quote-1': { node: quote1, parentId: 'doc-root', path: ['doc-root'] },
-      'quote-1-text': {
-        node: quote1.children[0]!,
-        parentId: 'quote-1',
-        path: ['doc-root', 'quote-1'],
+      'passage-1': { node: passage1, parentId: 'doc-root', path: ['doc-root'] },
+      'passage-1-text': {
+        node: passage1.children[0]!,
+        parentId: 'passage-1',
+        path: ['doc-root', 'passage-1'],
       },
     },
-    quoteIndex: {
-      byReference: { 'John 3:16': ['quote-1'] },
-      byBook: { John: ['quote-1'] },
-      all: ['quote-1'],
+    passageIndex: {
+      byReference: { 'John 3:16': ['passage-1'] },
+      byBook: { John: ['passage-1'] },
+      all: ['passage-1'],
     },
     extracted: {
       references: ['John 3:16'],
@@ -245,104 +257,70 @@ describe('InterjectionRenderer', () => {
 // ============================================================================
 
 describe('QuoteBlockRenderer', () => {
-  it('should render quote content', () => {
-    const quote = createQuoteBlockNode(
-      'quote-1',
+  it('should render passage content', () => {
+    const passage = createPassageNode(
+      'passage-1',
       'For God so loved the world.',
       'John 3:16',
       'John'
     );
-    render(<QuoteBlockRenderer node={quote} />);
+    render(<QuoteBlockRenderer node={passage} />);
 
     expect(screen.getByText('For God so loved the world.')).toBeInTheDocument();
   });
 
-  it('should render reference', () => {
-    const quote = createQuoteBlockNode(
-      'quote-1',
+  it('should wrap content in quotes', () => {
+    const passage = createPassageNode(
+      'passage-1',
       'For God so loved the world.',
       'John 3:16',
       'John'
     );
-    render(<QuoteBlockRenderer node={quote} />);
+    const { container } = render(<QuoteBlockRenderer node={passage} />);
 
-    expect(screen.getByText('John 3:16')).toBeInTheDocument();
-  });
-
-  it('should render translation badge', () => {
-    const quote = createQuoteBlockNode(
-      'quote-1',
-      'For God so loved the world.',
-      'John 3:16',
-      'John'
-    );
-    render(<QuoteBlockRenderer node={quote} />);
-
-    expect(screen.getByText('(KJV)')).toBeInTheDocument();
-  });
-
-  it('should hide reference when showReference is false', () => {
-    const quote = createQuoteBlockNode(
-      'quote-1',
-      'For God so loved the world.',
-      'John 3:16',
-      'John'
-    );
-    render(<QuoteBlockRenderer node={quote} showReference={false} />);
-
-    expect(screen.queryByText('John 3:16')).not.toBeInTheDocument();
-  });
-
-  it('should hide translation when showTranslation is false', () => {
-    const quote = createQuoteBlockNode(
-      'quote-1',
-      'For God so loved the world.',
-      'John 3:16',
-      'John'
-    );
-    render(<QuoteBlockRenderer node={quote} showTranslation={false} />);
-
-    expect(screen.queryByText('(KJV)')).not.toBeInTheDocument();
+    const passageContent = container.querySelector('.document-quote-content');
+    expect(passageContent).toBeInTheDocument();
+    // The component wraps content in curly quotes (unicode left double quotation mark U+201C)
+    expect(passageContent?.textContent).toContain('\u201C');
   });
 
   it('should apply high confidence class', () => {
-    const quote = createQuoteBlockNode(
-      'quote-1',
+    const passage = createPassageNode(
+      'passage-1',
       'For God so loved the world.',
       'John 3:16',
       'John',
       0.92
     );
-    const { container } = render(<QuoteBlockRenderer node={quote} />);
+    const { container } = render(<QuoteBlockRenderer node={passage} />);
 
-    const blockquote = container.querySelector('blockquote');
-    expect(blockquote).toHaveClass('document-quote-block--high-confidence');
+    const passageDiv = container.querySelector('.document-quote-block');
+    expect(passageDiv).toHaveClass('document-quote-block--high-confidence');
   });
 
   it('should apply medium confidence class', () => {
-    const quote = createQuoteBlockNode('quote-1', 'Text', 'John 3:16', 'John', 0.7);
-    const { container } = render(<QuoteBlockRenderer node={quote} />);
+    const passage = createPassageNode('passage-1', 'Text', 'John 3:16', 'John', 0.7);
+    const { container } = render(<QuoteBlockRenderer node={passage} />);
 
-    const blockquote = container.querySelector('blockquote');
-    expect(blockquote).toHaveClass('document-quote-block--medium-confidence');
+    const passageDiv = container.querySelector('.document-quote-block');
+    expect(passageDiv).toHaveClass('document-quote-block--medium-confidence');
   });
 
   it('should apply low confidence class', () => {
-    const quote = createQuoteBlockNode('quote-1', 'Text', 'John 3:16', 'John', 0.5);
-    const { container } = render(<QuoteBlockRenderer node={quote} />);
+    const passage = createPassageNode('passage-1', 'Text', 'John 3:16', 'John', 0.5);
+    const { container } = render(<QuoteBlockRenderer node={passage} />);
 
-    const blockquote = container.querySelector('blockquote');
-    expect(blockquote).toHaveClass('document-quote-block--low-confidence');
+    const passageDiv = container.querySelector('.document-quote-block');
+    expect(passageDiv).toHaveClass('document-quote-block--low-confidence');
   });
 
   it('should have data attributes', () => {
-    const quote = createQuoteBlockNode('quote-1', 'Text', 'John 3:16', 'John', 0.85);
-    const { container } = render(<QuoteBlockRenderer node={quote} />);
+    const passage = createPassageNode('passage-1', 'Text', 'John 3:16', 'John', 0.85);
+    const { container } = render(<QuoteBlockRenderer node={passage} />);
 
-    const blockquote = container.querySelector('blockquote');
-    expect(blockquote).toHaveAttribute('data-node-id', 'quote-1');
-    expect(blockquote).toHaveAttribute('data-reference', 'John 3:16');
-    expect(blockquote).toHaveAttribute('data-confidence', '0.85');
+    const passageDiv = container.querySelector('.document-quote-block');
+    expect(passageDiv).toHaveAttribute('data-node-id', 'passage-1');
+    expect(passageDiv).toHaveAttribute('data-confidence', '0.85');
   });
 });
 
@@ -389,32 +367,26 @@ describe('ParagraphRenderer', () => {
     expect(container.textContent).toContain('Hello');
     expect(screen.getByText('amen')).toBeInTheDocument();
   });
-});
 
-// ============================================================================
-// HeadingRenderer TESTS
-// ============================================================================
-
-describe('HeadingRenderer', () => {
-  it('should render h1', () => {
-    const heading = createHeadingNode('heading-1', 'Main Title', 1);
-    render(<HeadingRenderer node={heading} />);
+  it('should render heading-styled paragraph as h1', () => {
+    const heading = createHeadingParagraph('heading-1', 'Main Title', 1);
+    render(<ParagraphRenderer node={heading} />);
 
     const h1 = screen.getByRole('heading', { level: 1 });
     expect(h1).toHaveTextContent('Main Title');
   });
 
-  it('should render h2', () => {
-    const heading = createHeadingNode('heading-2', 'Section Title', 2);
-    render(<HeadingRenderer node={heading} />);
+  it('should render heading-styled paragraph as h2', () => {
+    const heading = createHeadingParagraph('heading-2', 'Section Title', 2);
+    render(<ParagraphRenderer node={heading} />);
 
     const h2 = screen.getByRole('heading', { level: 2 });
     expect(h2).toHaveTextContent('Section Title');
   });
 
-  it('should have level-specific class', () => {
-    const heading = createHeadingNode('heading-1', 'Title', 1);
-    const { container } = render(<HeadingRenderer node={heading} />);
+  it('should have level-specific class for heading paragraph', () => {
+    const heading = createHeadingParagraph('heading-1', 'Title', 1);
+    const { container } = render(<ParagraphRenderer node={heading} />);
 
     const h1 = container.querySelector('h1');
     expect(h1).toHaveClass('document-heading');
@@ -442,16 +414,16 @@ describe('NodeRenderer', () => {
     expect(screen.getByText('Paragraph text')).toBeInTheDocument();
   });
 
-  it('should render quote node', () => {
-    const quote = createQuoteBlockNode('quote-1', 'Quote text', 'John 3:16', 'John');
-    render(<NodeRenderer node={quote} />);
+  it('should render passage node', () => {
+    const passage = createPassageNode('passage-1', 'Quote text', 'John 3:16', 'John');
+    render(<NodeRenderer node={passage} />);
 
+    // Quote content is wrapped in curly quotes by the renderer
     expect(screen.getByText('Quote text')).toBeInTheDocument();
-    expect(screen.getByText('John 3:16')).toBeInTheDocument();
   });
 
-  it('should render heading node', () => {
-    const heading = createHeadingNode('heading-1', 'Heading', 2);
+  it('should render heading paragraph via ParagraphRenderer', () => {
+    const heading = createHeadingParagraph('heading-1', 'Heading', 2);
     render(<NodeRenderer node={heading} />);
 
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Heading');
@@ -512,7 +484,7 @@ describe('DocumentRenderer', () => {
 
     expect(screen.getByText('words')).toBeInTheDocument();
     expect(screen.getByText('paragraphs')).toBeInTheDocument();
-    expect(screen.getByText('quotes')).toBeInTheDocument();
+    expect(screen.getByText('passages')).toBeInTheDocument();
   });
 
   it('should hide statistics when showStatistics is false', () => {

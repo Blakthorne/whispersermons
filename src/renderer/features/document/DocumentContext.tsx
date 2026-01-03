@@ -11,7 +11,7 @@
 
 import React, { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { DocumentManager, createDocumentManager } from './DocumentManager';
-import type { QuoteBlockNode, ParagraphNode, NodeId } from '../../../shared/documentModel';
+import type { PassageNode, ParagraphNode, NodeId } from '../../../shared/documentModel';
 import type { SermonDocument } from '../../types';
 import type { DocumentStatistics, NodeWithPath } from './DocumentManager';
 
@@ -49,8 +49,8 @@ export interface DocumentContextValue {
   /** Document statistics */
   statistics: DocumentStatistics | null;
 
-  /** All quotes in document order */
-  quotes: QuoteBlockNode[];
+  /** All passages in document order */
+  passages: PassageNode[];
 
   /** All paragraphs */
   paragraphs: ParagraphNode[];
@@ -69,14 +69,14 @@ export interface DocumentContextValue {
   /** Get a node with path info */
   getNodeWithPath: (nodeId: NodeId) => NodeWithPath | undefined;
 
-  /** Get a quote by ID */
-  getQuoteById: (quoteId: NodeId) => QuoteBlockNode | undefined;
+  /** Get a passage by ID */
+  getPassageById: (passageId: NodeId) => PassageNode | undefined;
 
-  /** Get quotes by reference */
-  getQuotesByReference: (reference: string) => QuoteBlockNode[];
+  /** Get passages by reference */
+  getPassagesByReference: (reference: string) => PassageNode[];
 
-  /** Get quotes by book */
-  getQuotesByBook: (book: string) => QuoteBlockNode[];
+  /** Get passages by book */
+  getPassagesByBook: (book: string) => PassageNode[];
 
   /** Extract plain text */
   extractText: (options?: Parameters<DocumentManager['extractText']>[0]) => string;
@@ -101,15 +101,16 @@ const defaultContextValue: DocumentContextValue = {
   speaker: undefined,
   wordCount: 0,
   statistics: null,
-  quotes: [],
+  passages: [],
   paragraphs: [],
   references: [],
   tags: [],
   getNodeById: () => undefined,
   getNodeWithPath: () => undefined,
-  getQuoteById: () => undefined,
-  getQuotesByReference: () => [],
-  getQuotesByBook: () => [],
+  getPassageById: () => undefined,
+  getPassagesByReference: () => [],
+  getPassagesByBook: () => [],
+
   extractText: () => '',
   getNodeText: () => '',
 };
@@ -165,7 +166,7 @@ export function DocumentProvider({
       speaker: manager.getSpeaker(),
       wordCount: manager.getWordCount(),
       statistics: manager.getStatistics(),
-      quotes: manager.getAllQuotes(),
+      passages: manager.getAllPassages(),
       paragraphs: manager.getParagraphs(),
       references: manager.getReferences(),
       tags: manager.getTags(),
@@ -173,9 +174,9 @@ export function DocumentProvider({
       // Methods - bind to manager instance
       getNodeById: (nodeId) => manager.getNodeById(nodeId),
       getNodeWithPath: (nodeId) => manager.getNodeWithPath(nodeId),
-      getQuoteById: (quoteId) => manager.getQuoteById(quoteId),
-      getQuotesByReference: (reference) => manager.getQuotesByReference(reference),
-      getQuotesByBook: (book) => manager.getQuotesByBook(book),
+      getPassageById: (passageId) => manager.getPassageById(passageId),
+      getPassagesByReference: (reference) => manager.getPassagesByReference(reference),
+      getPassagesByBook: (book) => manager.getPassagesByBook(book),
       extractText: (options) => manager.extractText(options),
       getNodeText: (nodeId) => manager.getNodeText(nodeId),
     };

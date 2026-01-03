@@ -15,10 +15,10 @@ import {
   createNodeMovedEvent,
   createTextChangedEvent,
   createContentReplacedEvent,
-  createQuoteCreatedEvent,
-  createQuoteRemovedEvent,
-  createQuoteMetadataUpdatedEvent,
-  createQuoteVerifiedEvent,
+  createPassageCreatedEvent,
+  createPassageRemovedEvent,
+  createPassageMetadataUpdatedEvent,
+  createPassageVerifiedEvent,
   createInterjectionAddedEvent,
   createInterjectionRemovedEvent,
   createNodesJoinedEvent,
@@ -37,7 +37,7 @@ import {
 import type {
   ParagraphNode,
   TextNode,
-  QuoteBlockNode,
+  PassageNode,
   InterjectionNode,
   DocumentRootNode,
 } from '../../../../shared/documentModel';
@@ -73,12 +73,12 @@ function sampleParagraphNode(content = 'Hello, world!'): ParagraphNode {
 }
 
 /**
- * Create a sample quote block node for testing.
+ * Create a sample passage node for testing.
  */
-function sampleQuoteBlockNode(): QuoteBlockNode {
+function samplePassageNode(): PassageNode {
   return {
-    id: 'quote-1',
-    type: 'quote_block',
+    id: 'passage-1',
+    type: 'passage',
     version: 1,
     updatedAt: '2024-01-01T00:00:00.000Z',
     metadata: {
@@ -313,15 +313,15 @@ describe('Text Events', () => {
 });
 
 // ============================================================================
-// QUOTE EVENTS
+// PASSAGE EVENTS
 // ============================================================================
 
-describe('Quote Events', () => {
-  describe('createQuoteCreatedEvent', () => {
-    it('should create a quote_created event', () => {
-      const quote = sampleQuoteBlockNode();
-      const event = createQuoteCreatedEvent(
-        quote,
+describe('Passage Events', () => {
+  describe('createPassageCreatedEvent', () => {
+    it('should create a passage_created event', () => {
+      const passage = samplePassageNode();
+      const event = createPassageCreatedEvent(
+        passage,
         'root-1',
         0,
         ['para-old-1'],
@@ -329,8 +329,8 @@ describe('Quote Events', () => {
         'system'
       );
 
-      expect(event.type).toBe('quote_created');
-      expect(event.quote).toBe(quote);
+      expect(event.type).toBe('passage_created');
+      expect(event.passage).toBe(passage);
       expect(event.parentId).toBe('root-1');
       expect(event.index).toBe(0);
       expect(event.replacedNodeIds).toEqual(['para-old-1']);
@@ -339,37 +339,37 @@ describe('Quote Events', () => {
     });
 
     it('should allow empty replacedNodeIds', () => {
-      const quote = sampleQuoteBlockNode();
-      const event = createQuoteCreatedEvent(quote, 'root-1', 0, [], 1, 'user');
+      const passage = samplePassageNode();
+      const event = createPassageCreatedEvent(passage, 'root-1', 0, [], 1, 'user');
 
       expect(event.replacedNodeIds).toEqual([]);
     });
   });
 
-  describe('createQuoteRemovedEvent', () => {
-    it('should create a quote_removed event with replacements', () => {
-      const quote = sampleQuoteBlockNode();
+  describe('createPassageRemovedEvent', () => {
+    it('should create a passage_removed event with replacements', () => {
+      const passage = samplePassageNode();
       const replacements = [sampleParagraphNode('For God so loved the world...')];
-      const event = createQuoteRemovedEvent('quote-1', quote, replacements, 6, 'user');
+      const event = createPassageRemovedEvent('passage-1', passage, replacements, 6, 'user');
 
-      expect(event.type).toBe('quote_removed');
-      expect(event.quoteId).toBe('quote-1');
-      expect(event.removedQuote).toBe(quote);
+      expect(event.type).toBe('passage_removed');
+      expect(event.passageId).toBe('passage-1');
+      expect(event.removedPassage).toBe(passage);
       expect(event.replacementNodes).toBe(replacements);
       expect(event.resultingVersion).toBe(6);
     });
   });
 
-  describe('createQuoteMetadataUpdatedEvent', () => {
-    it('should create a quote_metadata_updated event', () => {
-      const quote = sampleQuoteBlockNode();
-      const previousMeta = quote.metadata;
+  describe('createPassageMetadataUpdatedEvent', () => {
+    it('should create a passage_metadata_updated event', () => {
+      const passage = samplePassageNode();
+      const previousMeta = passage.metadata;
       const newMeta = {
         ...previousMeta,
         userVerified: true,
       };
-      const event = createQuoteMetadataUpdatedEvent(
-        'quote-1',
+      const event = createPassageMetadataUpdatedEvent(
+        'passage-1',
         previousMeta,
         newMeta,
         ['userVerified'],
@@ -377,33 +377,33 @@ describe('Quote Events', () => {
         'user'
       );
 
-      expect(event.type).toBe('quote_metadata_updated');
-      expect(event.quoteId).toBe('quote-1');
+      expect(event.type).toBe('passage_metadata_updated');
+      expect(event.passageId).toBe('passage-1');
       expect(event.previousMetadata).toBe(previousMeta);
       expect(event.newMetadata).toBe(newMeta);
       expect(event.changedFields).toEqual(['userVerified']);
     });
   });
 
-  describe('createQuoteVerifiedEvent', () => {
-    it('should create a quote_verified event', () => {
-      const event = createQuoteVerifiedEvent(
-        'quote-1',
+  describe('createPassageVerifiedEvent', () => {
+    it('should create a passage_verified event', () => {
+      const event = createPassageVerifiedEvent(
+        'passage-1',
         true,
         'Verified by pastor',
         8,
         'user'
       );
 
-      expect(event.type).toBe('quote_verified');
-      expect(event.quoteId).toBe('quote-1');
+      expect(event.type).toBe('passage_verified');
+      expect(event.passageId).toBe('passage-1');
       expect(event.verified).toBe(true);
       expect(event.notes).toBe('Verified by pastor');
       expect(event.resultingVersion).toBe(8);
     });
 
     it('should allow undefined notes', () => {
-      const event = createQuoteVerifiedEvent('quote-1', false, undefined, 9, 'user');
+      const event = createPassageVerifiedEvent('passage-1', false, undefined, 9, 'user');
 
       expect(event.verified).toBe(false);
       expect(event.notes).toBeUndefined();
@@ -419,10 +419,10 @@ describe('Interjection Events', () => {
   describe('createInterjectionAddedEvent', () => {
     it('should create an interjection_added event', () => {
       const interj = sampleInterjectionNode();
-      const event = createInterjectionAddedEvent('quote-1', interj, 1, 10, 'user');
+      const event = createInterjectionAddedEvent('passage-1', interj, 1, 10, 'user');
 
       expect(event.type).toBe('interjection_added');
-      expect(event.quoteId).toBe('quote-1');
+      expect(event.passageId).toBe('passage-1');
       expect(event.interjection).toBe(interj);
       expect(event.index).toBe(1);
       expect(event.resultingVersion).toBe(10);
@@ -433,7 +433,7 @@ describe('Interjection Events', () => {
     it('should create an interjection_removed event', () => {
       const interj = sampleInterjectionNode();
       const event = createInterjectionRemovedEvent(
-        'quote-1',
+        'passage-1',
         'interj-1',
         interj,
         1,
@@ -442,7 +442,7 @@ describe('Interjection Events', () => {
       );
 
       expect(event.type).toBe('interjection_removed');
-      expect(event.quoteId).toBe('quote-1');
+      expect(event.passageId).toBe('passage-1');
       expect(event.interjectionId).toBe('interj-1');
       expect(event.removedInterjection).toBe(interj);
       expect(event.previousIndex).toBe(1);
@@ -730,22 +730,22 @@ describe('generateInverseEvents', () => {
     expect(inverses[0]!.type).toBe('node_created');
   });
 
-  it('should generate inverse for quote_created event', () => {
-    const quote = sampleQuoteBlockNode();
-    const event = createQuoteCreatedEvent(quote, 'root-1', 0, [], 2, 'system');
+  it('should generate inverse for passage_created event', () => {
+    const passage = samplePassageNode();
+    const event = createPassageCreatedEvent(passage, 'root-1', 0, [], 2, 'system');
     const inverses = generateInverseEvents(event, 3);
 
     expect(inverses).toHaveLength(1);
-    expect(inverses[0]!.type).toBe('quote_removed');
+    expect(inverses[0]!.type).toBe('passage_removed');
   });
 
-  it('should generate inverse for quote_verified event', () => {
-    const event = createQuoteVerifiedEvent('quote-1', true, 'Verified', 5, 'user');
+  it('should generate inverse for passage_verified event', () => {
+    const event = createPassageVerifiedEvent('passage-1', true, 'Verified', 5, 'user');
     const inverses = generateInverseEvents(event, 6);
 
     expect(inverses).toHaveLength(1);
-    expect(inverses[0]!.type).toBe('quote_verified');
-    const inverse = inverses[0]! as ReturnType<typeof createQuoteVerifiedEvent>;
+    expect(inverses[0]!.type).toBe('passage_verified');
+    const inverse = inverses[0]! as ReturnType<typeof createPassageVerifiedEvent>;
     expect(inverse.verified).toBe(false);
   });
 

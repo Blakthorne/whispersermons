@@ -17,10 +17,10 @@ import type {
   DocumentRootNode,
   ParagraphNode,
   TextNode,
-  QuoteBlockNode,
+  PassageNode,
   InterjectionNode,
   NodeId,
-  QuoteMetadata,
+  PassageMetadata,
   DocumentEvent,
   UndoEvent,
 } from '../../../shared/documentModel';
@@ -35,10 +35,10 @@ import {
   createNodeCreatedEvent,
   createNodeDeletedEvent,
   createTextChangedEvent,
-  createQuoteCreatedEvent,
-  createQuoteRemovedEvent,
-  createQuoteMetadataUpdatedEvent,
-  createQuoteVerifiedEvent,
+  createPassageCreatedEvent,
+  createPassageRemovedEvent,
+  createPassageMetadataUpdatedEvent,
+  createPassageVerifiedEvent,
   createInterjectionAddedEvent,
   createInterjectionRemovedEvent,
   createParagraphSplitEvent,
@@ -74,9 +74,9 @@ export interface MutationResult {
 }
 
 /**
- * Options for creating a quote.
+ * Options for creating a passage (Bible passage).
  */
-export interface CreateQuoteOptions {
+export interface CreatePassageOptions {
   /** The reference text (e.g., "John 3:16") */
   reference: string;
   /** Book name */
@@ -87,7 +87,7 @@ export interface CreateQuoteOptions {
   verseStart: number;
   /** End verse (optional) */
   verseEnd?: number;
-  /** The quote text content */
+  /** The passage text content */
   content: string;
   /** Confidence score (0-1) */
   confidence?: number;
@@ -97,7 +97,7 @@ export interface CreateQuoteOptions {
   parentId: NodeId;
   /** Index in parent */
   index: number;
-  /** Node IDs being replaced by this quote */
+  /** Node IDs being replaced by this passage */
   replacedNodeIds?: NodeId[];
 }
 
@@ -404,13 +404,13 @@ export class DocumentMutator {
   }
 
   // ============================================================================
-  // QUOTE MUTATIONS
+  // PASSAGE MUTATIONS (Bible Passages)
   // ============================================================================
 
   /**
-   * Create a new quote block.
+   * Create a new passage block (Bible passage).
    */
-  createQuote(options: CreateQuoteOptions, source: EventSource = 'user'): MutationResult {
+  createPassage(options: CreatePassageOptions, source: EventSource = 'user'): MutationResult {
     const {
       reference,
       book,
@@ -426,7 +426,7 @@ export class DocumentMutator {
     } = options;
 
     const now = createTimestamp();
-    const quoteId = createNodeId();
+    const passageId = createNodeId();
     const textNodeId = createNodeId();
 
     const textNode: TextNode = {
@@ -437,9 +437,9 @@ export class DocumentMutator {
       content,
     };
 
-    const quote: QuoteBlockNode = {
-      id: quoteId,
-      type: 'quote_block',
+    const passage: PassageNode = {
+      id: passageId,
+      type: 'passage',
       version: 1,
       updatedAt: now,
       metadata: {
@@ -465,8 +465,8 @@ export class DocumentMutator {
       children: [textNode],
     };
 
-    const event = createQuoteCreatedEvent(
-      quote,
+    const event = createPassageCreatedEvent(
+      passage,
       parentId,
       index,
       replacedNodeIds,
@@ -478,29 +478,29 @@ export class DocumentMutator {
   }
 
   /**
-   * Remove a quote block.
+   * Remove a passage block.
    */
-  removeQuote(quoteId: NodeId, source: EventSource = 'user'): MutationResult {
-    const quoteEntry = this.state.nodeIndex[quoteId];
-    if (!quoteEntry || quoteEntry.node.type !== 'quote_block') {
+  removePassage(passageId: NodeId, source: EventSource = 'user'): MutationResult {
+    const passageEntry = this.state.nodeIndex[passageId];
+    if (!passageEntry || passageEntry.node.type !== 'passage') {
       return {
         success: false,
         events: [],
-        error: `Quote not found: ${quoteId}`,
+        error: `Passage not found: ${passageId}`,
         state: this.state,
       };
     }
 
-    const quote = quoteEntry.node as QuoteBlockNode;
+    const passage = passageEntry.node as PassageNode;
 
-    // Convert quote content back to regular paragraphs
-    const replacementNodes: DocumentNode[] = quote.children
+    // Convert passage content back to regular paragraphs
+    const replacementNodes: DocumentNode[] = passage.children
       .filter(isTextNode)
       .map((textNode) => createParagraphNode([{ ...textNode, id: createNodeId() }]));
 
-    const event = createQuoteRemovedEvent(
-      quoteId,
-      quote,
+    const event = createPassageRemovedEvent(
+      passageId,
+      passage,
       replacementNodes,
       this.state.version + 1,
       source
@@ -510,27 +510,27 @@ export class DocumentMutator {
   }
 
   /**
-   * Update quote metadata.
+   * Update passage metadata.
    */
-  updateQuoteMetadata(
-    quoteId: NodeId,
-    updates: Partial<QuoteMetadata>,
+  updatePassageMetadata(
+    passageId: NodeId,
+    updates: Partial<PassageMetadata>,
     source: EventSource = 'user'
   ): MutationResult {
-    const quoteEntry = this.state.nodeIndex[quoteId];
-    if (!quoteEntry || quoteEntry.node.type !== 'quote_block') {
+    const passageEntry = this.state.nodeIndex[passageId];
+    if (!passageEntry || passageEntry.node.type !== 'passage') {
       return {
         success: false,
         events: [],
-        error: `Quote not found: ${quoteId}`,
+        error: `Passage not found: ${passageId}`,
         state: this.state,
       };
     }
 
-    const quote = quoteEntry.node as QuoteBlockNode;
-    const previousMetadata = quote.metadata;
+    const passage = passageEntry.node as PassageNode;
+    const previousMetadata = passage.metadata;
 
-    const newMetadata: QuoteMetadata = {
+    const newMetadata: PassageMetadata = {
       ...previousMetadata,
       ...updates,
       reference: updates.reference
@@ -541,12 +541,12 @@ export class DocumentMutator {
         : previousMetadata.detection,
     };
 
-    const changedFields = (Object.keys(updates) as (keyof QuoteMetadata)[]).filter(
+    const changedFields = (Object.keys(updates) as (keyof PassageMetadata)[]).filter(
       (key) => updates[key] !== undefined
     );
 
-    const event = createQuoteMetadataUpdatedEvent(
-      quoteId,
+    const event = createPassageMetadataUpdatedEvent(
+      passageId,
       previousMetadata,
       newMetadata,
       changedFields,
@@ -558,26 +558,26 @@ export class DocumentMutator {
   }
 
   /**
-   * Verify or unverify a quote.
+   * Verify or unverify a passage.
    */
-  verifyQuote(
-    quoteId: NodeId,
+  verifyPassage(
+    passageId: NodeId,
     verified: boolean,
     notes?: string,
     source: EventSource = 'user'
   ): MutationResult {
-    const quoteEntry = this.state.nodeIndex[quoteId];
-    if (!quoteEntry || quoteEntry.node.type !== 'quote_block') {
+    const passageEntry = this.state.nodeIndex[passageId];
+    if (!passageEntry || passageEntry.node.type !== 'passage') {
       return {
         success: false,
         events: [],
-        error: `Quote not found: ${quoteId}`,
+        error: `Passage not found: ${passageId}`,
         state: this.state,
       };
     }
 
-    const event = createQuoteVerifiedEvent(
-      quoteId,
+    const event = createPassageVerifiedEvent(
+      passageId,
       verified,
       notes,
       this.state.version + 1,
@@ -592,20 +592,20 @@ export class DocumentMutator {
   // ============================================================================
 
   /**
-   * Add an interjection to a quote.
+   * Add an interjection to a passage.
    */
   addInterjection(
-    quoteId: NodeId,
+    passageId: NodeId,
     content: string,
     index: number,
     source: EventSource = 'user'
   ): MutationResult {
-    const quoteEntry = this.state.nodeIndex[quoteId];
-    if (!quoteEntry || quoteEntry.node.type !== 'quote_block') {
+    const passageEntry = this.state.nodeIndex[passageId];
+    if (!passageEntry || passageEntry.node.type !== 'passage') {
       return {
         success: false,
         events: [],
-        error: `Quote not found: ${quoteId}`,
+        error: `Passage not found: ${passageId}`,
         state: this.state,
       };
     }
@@ -621,7 +621,7 @@ export class DocumentMutator {
     };
 
     const event = createInterjectionAddedEvent(
-      quoteId,
+      passageId,
       interjection,
       index,
       this.state.version + 1,
@@ -632,25 +632,25 @@ export class DocumentMutator {
   }
 
   /**
-   * Remove an interjection from a quote.
+   * Remove an interjection from a passage.
    */
   removeInterjection(
-    quoteId: NodeId,
+    passageId: NodeId,
     interjectionId: NodeId,
     source: EventSource = 'user'
   ): MutationResult {
-    const quoteEntry = this.state.nodeIndex[quoteId];
-    if (!quoteEntry || quoteEntry.node.type !== 'quote_block') {
+    const passageEntry = this.state.nodeIndex[passageId];
+    if (!passageEntry || passageEntry.node.type !== 'passage') {
       return {
         success: false,
         events: [],
-        error: `Quote not found: ${quoteId}`,
+        error: `Passage not found: ${passageId}`,
         state: this.state,
       };
     }
 
-    const quote = quoteEntry.node as QuoteBlockNode;
-    const interjectionIndex = quote.children.findIndex((c) => c.id === interjectionId);
+    const passage = passageEntry.node as PassageNode;
+    const interjectionIndex = passage.children.findIndex((c) => c.id === interjectionId);
 
     if (interjectionIndex === -1) {
       return {
@@ -661,10 +661,10 @@ export class DocumentMutator {
       };
     }
 
-    const interjection = quote.children[interjectionIndex] as InterjectionNode;
+    const interjection = passage.children[interjectionIndex] as InterjectionNode;
 
     const event = createInterjectionRemovedEvent(
-      quoteId,
+      passageId,
       interjectionId,
       interjection,
       interjectionIndex,

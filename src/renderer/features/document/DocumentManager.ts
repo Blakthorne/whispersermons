@@ -4,12 +4,17 @@
  * This class provides the "Read Path" for consuming DocumentState from Python processing.
  * It handles:
  * - Node lookups by ID (O(1) via nodeIndex)
- * - Quote lookups by reference or book
+ * - Passage lookups by reference or book (Bible passages)
  * - Tree traversal utilities
  * - Backward compatibility with legacy body-only format
  * - Statistics and word count
  *
  * The DocumentManager is read-only in Phase B. Phase C will add mutation methods.
+ *
+ * AST Node Types: document, paragraph, text, passage, interjection
+ * Headings are paragraphs with headingLevel (1-3)
+ * Lists are paragraphs with listStyle/listNumber/listDepth
+ * Block quotes (visual) are paragraphs with isBlockQuote
  */
 
 import type {
@@ -18,19 +23,21 @@ import type {
   DocumentNode,
   ParagraphNode,
   TextNode,
-  QuoteBlockNode,
+  PassageNode,
   InterjectionNode,
-  HeadingNode,
   NodeId,
   NodeIndex,
-  QuoteMetadata,
+  PassageMetadata,
 } from '../../../shared/documentModel';
 
 import {
   isTextNode as checkIsTextNode,
-  isQuoteBlockNode as checkIsQuoteBlockNode,
+  isPassageNode as checkIsPassageNode,
   isInterjectionNode as checkIsInterjectionNode,
   hasChildren as checkHasChildren,
+  isParagraphNode as checkIsParagraphNode,
+  isHeadingParagraph as checkIsHeadingParagraph,
+  isListItemParagraph as checkIsListItemParagraph,
 } from '../../../shared/documentModel';
 
 /**
@@ -43,10 +50,10 @@ export interface DocumentStatistics {
   characterCount: number;
   /** Number of paragraphs */
   paragraphCount: number;
-  /** Number of quotes */
-  quoteCount: number;
-  /** Number of verified quotes */
-  verifiedQuoteCount: number;
+  /** Number of passages (Bible passages) */
+  passageCount: number;
+  /** Number of verified passages */
+  verifiedPassageCount: number;
   /** Number of interjections */
   interjectionCount: number;
   /** Number of headings */
@@ -73,8 +80,8 @@ export interface NodeWithPath<T extends DocumentNode = DocumentNode> {
 export interface TextExtractionOptions {
   /** Include interjections in text output */
   includeInterjections?: boolean;
-  /** Include quote metadata as annotations */
-  includeQuoteAnnotations?: boolean;
+  /** Include passage metadata as annotations */
+  includePassageAnnotations?: boolean;
   /** Separator between paragraphs */
   paragraphSeparator?: string;
 }
@@ -251,66 +258,66 @@ export class DocumentManager {
   }
 
   // ============================================================================
-  // QUOTE LOOKUPS (via quoteIndex)
+  // PASSAGE LOOKUPS (via passageIndex) - Bible Passages
   // ============================================================================
 
   /**
-   * Get all quotes in document order.
+   * Get all passages in document order.
    *
-   * @returns Array of QuoteBlockNode
+   * @returns Array of PassageNode
    */
-  getAllQuotes(): QuoteBlockNode[] {
-    return this.state.quoteIndex.all
+  getAllPassages(): PassageNode[] {
+    return this.state.passageIndex.all
       .map((id) => this.getNodeById(id))
-      .filter((node): node is QuoteBlockNode => node !== undefined && checkIsQuoteBlockNode(node));
+      .filter((node): node is PassageNode => node !== undefined && checkIsPassageNode(node));
   }
 
   /**
-   * Get a quote by ID.
+   * Get a passage by ID.
    *
-   * @param quoteId - The quote node ID
-   * @returns QuoteBlockNode if found, undefined otherwise
+   * @param passageId - The passage node ID
+   * @returns PassageNode if found, undefined otherwise
    */
-  getQuoteById(quoteId: NodeId): QuoteBlockNode | undefined {
-    const node = this.getNodeById(quoteId);
-    return node && checkIsQuoteBlockNode(node) ? node : undefined;
+  getPassageById(passageId: NodeId): PassageNode | undefined {
+    const node = this.getNodeById(passageId);
+    return node && checkIsPassageNode(node) ? node : undefined;
   }
 
   /**
-   * Get quotes by normalized reference.
+   * Get passages by normalized reference.
    *
    * @param reference - The normalized reference string (e.g., "Matthew 5:3")
-   * @returns Array of QuoteBlockNode
+   * @returns Array of PassageNode
    */
-  getQuotesByReference(reference: string): QuoteBlockNode[] {
-    const ids = this.state.quoteIndex.byReference[reference] || [];
+  getPassagesByReference(reference: string): PassageNode[] {
+    const ids = this.state.passageIndex.byReference[reference] || [];
     return ids
       .map((id) => this.getNodeById(id))
-      .filter((node): node is QuoteBlockNode => node !== undefined && checkIsQuoteBlockNode(node));
+      .filter((node): node is PassageNode => node !== undefined && checkIsPassageNode(node));
   }
 
   /**
-   * Get quotes by book name.
+   * Get passages by book name.
    *
    * @param book - The book name (e.g., "Matthew")
-   * @returns Array of QuoteBlockNode
+   * @returns Array of PassageNode
    */
-  getQuotesByBook(book: string): QuoteBlockNode[] {
-    const ids = this.state.quoteIndex.byBook[book] || [];
+  getPassagesByBook(book: string): PassageNode[] {
+    const ids = this.state.passageIndex.byBook[book] || [];
     return ids
       .map((id) => this.getNodeById(id))
-      .filter((node): node is QuoteBlockNode => node !== undefined && checkIsQuoteBlockNode(node));
+      .filter((node): node is PassageNode => node !== undefined && checkIsPassageNode(node));
   }
 
   /**
-   * Get quote metadata by quote ID.
+   * Get passage metadata by passage ID.
    *
-   * @param quoteId - The quote node ID
-   * @returns QuoteMetadata if found, undefined otherwise
+   * @param passageId - The passage node ID
+   * @returns PassageMetadata if found, undefined otherwise
    */
-  getQuoteMetadata(quoteId: NodeId): QuoteMetadata | undefined {
-    const quote = this.getQuoteById(quoteId);
-    return quote?.metadata;
+  getPassageMetadata(passageId: NodeId): PassageMetadata | undefined {
+    const passage = this.getPassageById(passageId);
+    return passage?.metadata;
   }
 
   // ============================================================================
@@ -363,10 +370,29 @@ export class DocumentManager {
   }
 
   /**
-   * Get all headings.
+   * Get all headings (paragraphs with headingLevel).
    */
-  getHeadings(): HeadingNode[] {
-    return this.getNodesByType('heading');
+  getHeadings(): (ParagraphNode & { headingLevel: 1 | 2 | 3 })[] {
+    const result: (ParagraphNode & { headingLevel: 1 | 2 | 3 })[] = [];
+    this.traverse((node) => {
+      if (checkIsParagraphNode(node) && checkIsHeadingParagraph(node)) {
+        result.push(node);
+      }
+    });
+    return result;
+  }
+
+  /**
+   * Get all list items (paragraphs with listStyle).
+   */
+  getListItems(): (ParagraphNode & { listStyle: 'bullet' | 'ordered' })[] {
+    const result: (ParagraphNode & { listStyle: 'bullet' | 'ordered' })[] = [];
+    this.traverse((node) => {
+      if (checkIsParagraphNode(node) && checkIsListItemParagraph(node)) {
+        result.push(node);
+      }
+    });
+    return result;
   }
 
   /**
@@ -433,7 +459,7 @@ export class DocumentManager {
   extractText(options: TextExtractionOptions = {}): string {
     const {
       includeInterjections = true,
-      includeQuoteAnnotations = false,
+      includePassageAnnotations = false,
       paragraphSeparator = '\n\n',
     } = options;
 
@@ -448,13 +474,13 @@ export class DocumentManager {
         return includeInterjections ? `[${node.content}]` : '';
       }
 
-      if (checkIsQuoteBlockNode(node)) {
-        const quoteText = node.children.map(extractFromNode).join('');
-        if (includeQuoteAnnotations) {
+      if (checkIsPassageNode(node)) {
+        const passageText = node.children.map(extractFromNode).join('');
+        if (includePassageAnnotations) {
           const ref = node.metadata.reference?.normalizedReference ?? 'Unknown';
-          return `"${quoteText}" (${ref})`;
+          return `"${passageText}" (${ref})`;
         }
-        return quoteText;
+        return passageText;
       }
 
       if (checkHasChildren(node)) {
@@ -509,8 +535,8 @@ export class DocumentManager {
     let wordCount = 0;
     let characterCount = 0;
     let paragraphCount = 0;
-    let quoteCount = 0;
-    let verifiedQuoteCount = 0;
+    let passageCount = 0;
+    let verifiedPassageCount = 0;
     let interjectionCount = 0;
     let headingCount = 0;
 
@@ -523,12 +549,16 @@ export class DocumentManager {
           break;
         case 'paragraph':
           paragraphCount++;
+          // Count heading-styled paragraphs separately
+          if (checkIsHeadingParagraph(node)) {
+            headingCount++;
+          }
           break;
-        case 'quote_block':
-          quoteCount++;
-          const quoteNode = node as QuoteBlockNode;
-          if (quoteNode.metadata.userVerified) {
-            verifiedQuoteCount++;
+        case 'passage':
+          passageCount++;
+          const passageNode = node as PassageNode;
+          if (passageNode.metadata.userVerified) {
+            verifiedPassageCount++;
           }
           break;
         case 'interjection':
@@ -537,9 +567,6 @@ export class DocumentManager {
           wordCount += intText.trim().split(/\s+/).filter(Boolean).length;
           characterCount += intText.replace(/\s/g, '').length;
           break;
-        case 'heading':
-          headingCount++;
-          break;
       }
     });
 
@@ -547,8 +574,8 @@ export class DocumentManager {
       wordCount,
       characterCount,
       paragraphCount,
-      quoteCount,
-      verifiedQuoteCount,
+      passageCount,
+      verifiedPassageCount,
       interjectionCount,
       headingCount,
     };
@@ -657,7 +684,7 @@ export class DocumentManager {
       undoStack: [],
       redoStack: [],
       nodeIndex,
-      quoteIndex: {
+      passageIndex: {
         byReference: {},
         byBook: {},
         all: [],
@@ -695,7 +722,7 @@ export class DocumentManager {
       nodeIndex: {
         [rootId]: { node: root, parentId: null, path: [] },
       },
-      quoteIndex: {
+      passageIndex: {
         byReference: {},
         byBook: {},
         all: [],

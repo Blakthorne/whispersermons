@@ -77,8 +77,8 @@ export type { DocumentContextValue, DocumentProviderProps } from './DocumentCont
 export { useDocument, useDocumentSafe } from './hooks/useDocument';
 export type { UseDocumentResult } from './hooks/useDocument';
 
-export { useQuotes } from './hooks/useQuotes';
-export type { UseQuotesResult, EnrichedQuote, QuoteFilterOptions } from './hooks/useQuotes';
+export { usePassages } from './hooks/usePassages';
+export type { UsePassagesResult, EnrichedPassage, PassageFilterOptions } from './hooks/usePassages';
 
 export { useNode, useNodeTraversal } from './hooks/useNode';
 export type { UseNodeResult } from './hooks/useNode';
@@ -91,6 +91,8 @@ export { useUndoRedo } from './hooks/useUndoRedo';
 export type { UseUndoRedoResult, UseUndoRedoOptions } from './hooks/useUndoRedo';
 
 // --- Components ---
+// Node renderers for the 5 AST node types:
+// document, paragraph (handles headingLevel/listStyle), text, quote, interjection
 export {
   DocumentRenderer,
   NodeRenderer,
@@ -98,7 +100,6 @@ export {
   TextRenderer,
   QuoteBlockRenderer,
   InterjectionRenderer,
-  HeadingRenderer,
 } from './components';
 export type {
   DocumentRendererProps,
@@ -107,7 +108,6 @@ export type {
   TextRendererProps,
   QuoteBlockRendererProps,
   InterjectionRendererProps,
-  HeadingRendererProps,
 } from './components';
 
 // --- Events (Write Path - Phase C) ---
@@ -121,7 +121,7 @@ export type { ApplyEventResult, ReducerOptions } from './reducer';
 export { DocumentMutator, createDocumentMutator } from './DocumentMutator';
 export type {
   MutationResult,
-  CreateQuoteOptions,
+  CreatePassageOptions,
   StateChangeCallback,
 } from './DocumentMutator';
 

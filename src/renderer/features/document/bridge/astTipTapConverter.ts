@@ -11,31 +11,29 @@
  * - TipTap → AST: For persisting edits (debounced)
  *
  * ## Node ID Preservation Strategy:
- * - Structural nodes (paragraphs, quotes, headings): Preserve IDs via attrs
+ * - Structural nodes (paragraphs, passages): Preserve IDs via attrs
  * - Text nodes: Regenerate IDs (they change frequently during editing)
  * - This balances stability with simplicity
  *
- * ## Node Mapping:
+ * ## IMPORTANT: Passages vs Block Quotes
+ * - PassageNode = Bible passage (semantic content with scripture reference)
+ * - ParagraphNode with isBlockQuote = Visual formatting (indented text)
+ * These are DISTINCT concepts and should not be confused!
+ *
+ * ## Node Mapping (AST has 5 semantic types):
  * - DocumentRootNode → TipTap doc
- * - ParagraphNode → TipTap paragraph
+ * - ParagraphNode → TipTap paragraph, heading, bulletList/orderedList item, or blockquote (visual)
  * - TextNode → TipTap text
- * - QuoteBlockNode → TipTap blockquote with data attributes
- * - HeadingNode → TipTap heading
+ * - PassageNode → TipTap custom 'biblePassage' node (NOT blockquote!)
  * - InterjectionNode → TipTap text with interjection mark
  *
+ * ## Formatting as Properties:
+ * - TipTap headings → ParagraphNode with headingLevel (1-3)
+ * - TipTap lists → ParagraphNode with listStyle + listNumber
+ * - TipTap blockquote (visual) → ParagraphNode with isBlockQuote=true
+ *
  * ## Metadata Preservation:
- * Quote metadata is stored in TipTap's `attrs` system:
- * ```json
- * {
- *   "type": "blockquote",
- *   "attrs": {
- *     "quoteId": "node-xxx",
- *     "reference": "John 3:16",
- *     "book": "John",
- *     "userVerified": false
- *   }
- * }
- * ```
+ * Passage metadata is stored in TipTap's `attrs` system.
  */
 
 import type {
@@ -43,18 +41,19 @@ import type {
   DocumentNode,
   ParagraphNode,
   TextNode,
-  QuoteBlockNode,
-  HeadingNode,
+  PassageNode,
   InterjectionNode,
   NodeId,
-  QuoteMetadata,
+  PassageMetadata,
 } from '../../../../shared/documentModel';
 import {
   isParagraphNode,
   isTextNode,
-  isQuoteBlockNode,
-  isHeadingNode,
+  isPassageNode,
   isInterjectionNode,
+  isHeadingParagraph,
+  isListItemParagraph,
+  isBlockQuoteParagraph,
 } from '../../../../shared/documentModel';
 import { createNodeId, createTimestamp } from '../events';
 
@@ -183,6 +182,11 @@ export function astToTipTapJson(
 
 /**
  * Convert a single AST node to TipTap node.
+ *
+ * Paragraphs with headingLevel become TipTap headings.
+ * Paragraphs with listStyle become TipTap list items.
+ * Paragraphs with isBlockQuote become TipTap blockquote (visual formatting).
+ * PassageNodes become custom biblePassage elements (NOT blockquote!).
  */
 function convertNodeToTipTap(
   node: DocumentNode,
@@ -191,15 +195,24 @@ function convertNodeToTipTap(
   const { preserveIds, includeInterjections } = options;
 
   if (isParagraphNode(node)) {
+    // Paragraphs with headingLevel render as TipTap headings
+    if (isHeadingParagraph(node)) {
+      return convertHeadingParagraphToTipTap(node, options);
+    }
+    // Paragraphs with listStyle render as TipTap list items
+    if (isListItemParagraph(node)) {
+      return convertListItemParagraphToTipTap(node, options);
+    }
+    // Paragraphs with isBlockQuote render as TipTap blockquote (VISUAL formatting only)
+    if (isBlockQuoteParagraph(node)) {
+      return convertBlockQuoteParagraphToTipTap(node, options);
+    }
     return convertParagraphToTipTap(node, options);
   }
 
-  if (isQuoteBlockNode(node)) {
-    return convertQuoteToTipTap(node, options);
-  }
-
-  if (isHeadingNode(node)) {
-    return convertHeadingToTipTap(node, options);
+  // PassageNode = Bible passage (semantic content), NOT visual blockquote
+  if (isPassageNode(node)) {
+    return convertPassageToTipTap(node, options);
   }
 
   if (isTextNode(node)) {
@@ -253,19 +266,150 @@ function convertParagraphToTipTap(
     }
   }
 
+  // Build attrs
+  const attrs: Record<string, unknown> = {};
+  if (preserveIds) {
+    attrs.nodeId = node.id;
+  }
+  if (node.textAlign) {
+    attrs.textAlign = node.textAlign;
+  }
+
   return {
     type: 'paragraph',
-    attrs: preserveIds ? { nodeId: node.id } : undefined,
+    attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
     // Use empty array for empty paragraphs - ProseMirror doesn't allow empty text nodes
     content: content.length > 0 ? content : [],
   };
 }
 
 /**
- * Convert quote block to TipTap blockquote with metadata.
+ * Convert a paragraph with headingLevel to TipTap heading.
  */
-function convertQuoteToTipTap(
-  node: QuoteBlockNode,
+function convertHeadingParagraphToTipTap(
+  node: ParagraphNode & { headingLevel: 1 | 2 | 3 },
+  options: ConversionOptions
+): TipTapNode {
+  const { preserveIds } = options;
+  const content: TipTapNode[] = [];
+
+  for (const child of node.children) {
+    const converted = convertNodeToTipTap(child, options);
+    if (converted) {
+      content.push(converted);
+    }
+  }
+
+  // Build attrs
+  const attrs: Record<string, unknown> = {
+    level: node.headingLevel,
+  };
+  if (preserveIds) {
+    attrs.nodeId = node.id;
+  }
+  if (node.textAlign) {
+    attrs.textAlign = node.textAlign;
+  }
+
+  return {
+    type: 'heading',
+    attrs,
+    content: content.length > 0 ? content : [],
+  };
+}
+
+/**
+ * Convert a paragraph with listStyle to TipTap list item.
+ * Note: TipTap expects lists to be wrapped, but we output flat list items
+ * that the editor can handle.
+ */
+function convertListItemParagraphToTipTap(
+  node: ParagraphNode & { listStyle: 'bullet' | 'ordered' },
+  options: ConversionOptions
+): TipTapNode {
+  const { preserveIds } = options;
+  const content: TipTapNode[] = [];
+
+  for (const child of node.children) {
+    const converted = convertNodeToTipTap(child, options);
+    if (converted) {
+      content.push(converted);
+    }
+  }
+
+  // Build the paragraph content
+  const paragraphNode: TipTapNode = {
+    type: 'paragraph',
+    content: content.length > 0 ? content : [],
+  };
+
+  // Build list item attrs
+  const listItemAttrs: Record<string, unknown> = {};
+  if (preserveIds) {
+    listItemAttrs.nodeId = node.id;
+  }
+
+  // Create list item wrapping the paragraph
+  const listItem: TipTapNode = {
+    type: 'listItem',
+    attrs: Object.keys(listItemAttrs).length > 0 ? listItemAttrs : undefined,
+    content: [paragraphNode],
+  };
+
+  // Wrap in appropriate list type
+  return {
+    type: node.listStyle === 'ordered' ? 'orderedList' : 'bulletList',
+    content: [listItem],
+  };
+}
+
+/**
+ * Convert a paragraph with isBlockQuote to TipTap blockquote.
+ * This is VISUAL formatting only - NOT a Bible passage!
+ */
+function convertBlockQuoteParagraphToTipTap(
+  node: ParagraphNode & { isBlockQuote: true },
+  options: ConversionOptions
+): TipTapNode {
+  const { preserveIds } = options;
+  const content: TipTapNode[] = [];
+
+  for (const child of node.children) {
+    const converted = convertNodeToTipTap(child, options);
+    if (converted) {
+      content.push(converted);
+    }
+  }
+
+  // Build attrs - NO Bible metadata here, just node ID and formatting
+  const attrs: Record<string, unknown> = {};
+  if (preserveIds) {
+    attrs.nodeId = node.id;
+  }
+  if (node.textAlign) {
+    attrs.textAlign = node.textAlign;
+  }
+
+  // Wrap content in a paragraph inside the blockquote
+  const paragraphContent: TipTapNode = {
+    type: 'paragraph',
+    content: content.length > 0 ? content : [],
+  };
+
+  return {
+    type: 'blockquote',
+    attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
+    content: [paragraphContent],
+  };
+}
+
+/**
+ * Convert Bible passage to TipTap.
+ * Uses blockquote with isBiblePassage=true to distinguish from visual block quotes.
+ * This keeps Bible passages semantically distinct from visual block quotes.
+ */
+function convertPassageToTipTap(
+  node: PassageNode,
   options: ConversionOptions
 ): TipTapNode {
   const { preserveIds, includeMetadata } = options;
@@ -275,7 +419,7 @@ function convertQuoteToTipTap(
   for (const child of node.children) {
     const converted = convertNodeToTipTap(child, options);
     if (converted) {
-      // Wrap text nodes in paragraphs for blockquote
+      // Wrap text nodes in paragraphs
       if (converted.type === 'text') {
         content.push({
           type: 'paragraph',
@@ -287,8 +431,10 @@ function convertQuoteToTipTap(
     }
   }
 
-  // Build attrs with metadata
-  const attrs: Record<string, unknown> = {};
+  // Build attrs with metadata - ALWAYS mark as Bible passage
+  const attrs: Record<string, unknown> = {
+    isBiblePassage: true, // Key differentiator from visual blockquote
+  };
   if (preserveIds) {
     attrs.nodeId = node.id;
   }
@@ -310,39 +456,8 @@ function convertQuoteToTipTap(
 
   return {
     type: 'blockquote',
-    attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
+    attrs,
     content: content.length > 0 ? content : [{ type: 'paragraph', content: [] }],
-  };
-}
-
-/**
- * Convert heading to TipTap heading.
- */
-function convertHeadingToTipTap(
-  node: HeadingNode,
-  options: ConversionOptions
-): TipTapNode {
-  const { preserveIds } = options;
-  const content: TipTapNode[] = [];
-
-  for (const child of node.children) {
-    const converted = convertNodeToTipTap(child, options);
-    if (converted) {
-      content.push(converted);
-    }
-  }
-
-  // Use empty array for empty headings - ProseMirror doesn't allow empty text nodes
-  // Empty content arrays are valid in TipTap/ProseMirror
-  const finalContent = content.length > 0 ? content : [];
-
-  return {
-    type: 'heading',
-    attrs: {
-      level: node.level,
-      ...(preserveIds ? { nodeId: node.id } : {}),
-    },
-    content: finalContent,
   };
 }
 
@@ -352,11 +467,10 @@ function convertHeadingToTipTap(
 
 /**
  * Convert TipTap JSON document to DocumentRootNode.
- * 
- * This is the primary conversion for the AST-only architecture.
- * Node IDs for structural nodes (paragraphs, quotes, headings) are preserved
- * via TipTap attrs. Text node IDs are regenerated.
- * 
+ *
+ * TipTap headings become ParagraphNode with headingLevel.
+ * TipTap lists become ParagraphNode with listStyle.
+ *
  * @param doc - TipTap document JSON
  * @param options - Conversion options
  * @param existingRoot - Optional existing root for ID preservation hints
@@ -402,7 +516,7 @@ export function tipTapJsonToAst(
 
     for (const node of doc.content) {
       // Extract title from FIRST H1 ONLY if it's centered (auto-generated title format)
-      // User-created H1s (not centered) should be preserved as HeadingNodes in content
+      // User-created H1s (not centered) should be preserved as paragraphs with headingLevel
       if (
         node.type === 'heading' && 
         node.attrs?.level === 1 && 
@@ -476,6 +590,12 @@ export function tipTapJsonToAst(
 
 /**
  * Convert a TipTap node to AST node.
+ *
+ * TipTap headings become ParagraphNode with headingLevel.
+ * TipTap lists become ParagraphNode with listStyle.
+ * TipTap blockquotes are distinguished:
+ *   - With isBiblePassage=true or Bible metadata → PassageNode
+ *   - Without Bible metadata → ParagraphNode with isBlockQuote=true (VISUAL formatting)
  */
 function convertTipTapToNode(
   node: TipTapNode,
@@ -488,10 +608,21 @@ function convertTipTapToNode(
       return convertTipTapParagraph(node, options);
 
     case 'blockquote':
-      return convertTipTapBlockquote(node, options);
+      // CRITICAL: Distinguish between Bible passages and visual block quotes
+      return convertTipTapBlockquoteOrPassage(node, options);
 
     case 'heading':
-      return convertTipTapHeading(node, options);
+      // Headings become paragraphs with headingLevel
+      return convertTipTapHeadingToParagraph(node, options);
+
+    case 'bulletList':
+    case 'orderedList':
+      // Lists become array of paragraphs with listStyle
+      return convertTipTapListToParagraphs(node, options);
+
+    case 'listItem':
+      // List items handled by parent list converter
+      return null;
 
     case 'text': {
       // Check for interjection mark
@@ -558,7 +689,7 @@ function convertTipTapParagraph(
     });
   }
 
-  return {
+  const result: ParagraphNode = {
     id: preserveIds && node.attrs?.nodeId
       ? (node.attrs.nodeId as NodeId)
       : createNodeId(),
@@ -567,15 +698,50 @@ function convertTipTapParagraph(
     updatedAt: createTimestamp(),
     children,
   };
+
+  // Preserve textAlign if present
+  if (node.attrs?.textAlign) {
+    result.textAlign = node.attrs.textAlign as 'left' | 'center' | 'right' | 'justify';
+  }
+
+  return result;
 }
 
 /**
- * Convert TipTap blockquote to QuoteBlockNode.
+ * Convert TipTap blockquote to either PassageNode (Bible passage) or
+ * ParagraphNode with isBlockQuote=true (visual formatting).
+ * 
+ * CRITICAL: This function distinguishes between:
+ * 1. Bible passages (have isBiblePassage=true or reference/book metadata)
+ * 2. Visual block quotes (no Bible metadata - just indented text)
  */
-function convertTipTapBlockquote(
+function convertTipTapBlockquoteOrPassage(
   node: TipTapNode,
   options: ConversionOptions
-): QuoteBlockNode {
+): PassageNode | ParagraphNode {
+  const attrs = node.attrs || {};
+  
+  // Check if this is a Bible passage (has Bible-specific metadata)
+  const isBiblePassage = 
+    attrs.isBiblePassage === true ||
+    attrs.reference !== undefined ||
+    attrs.book !== undefined;
+  
+  if (isBiblePassage) {
+    return convertTipTapToPassage(node, options);
+  } else {
+    // This is a VISUAL block quote (formatting only)
+    return convertTipTapToBlockQuoteParagraph(node, options);
+  }
+}
+
+/**
+ * Convert TipTap blockquote to PassageNode (Bible passage with metadata).
+ */
+function convertTipTapToPassage(
+  node: TipTapNode,
+  options: ConversionOptions
+): PassageNode {
   const { preserveIds } = options;
   const attrs = node.attrs || {};
   const children: (TextNode | InterjectionNode)[] = [];
@@ -616,7 +782,7 @@ function convertTipTapBlockquote(
   const refString = (attrs.reference as string) || 'Unknown';
 
   // Build metadata from attrs
-  const metadata: QuoteMetadata = {
+  const metadata: PassageMetadata = {
     reference: {
       book: (attrs.book as string) || extractBook(refString),
       chapter: (attrs.chapter as number) || 0,
@@ -641,7 +807,7 @@ function convertTipTapBlockquote(
     id: preserveIds && attrs.nodeId
       ? (attrs.nodeId as NodeId)
       : createNodeId(),
-    type: 'quote_block',
+    type: 'passage',
     version: 1,
     updatedAt: createTimestamp(),
     metadata,
@@ -650,26 +816,39 @@ function convertTipTapBlockquote(
 }
 
 /**
- * Convert TipTap heading to HeadingNode.
+ * Convert TipTap blockquote to ParagraphNode with isBlockQuote=true (visual formatting).
+ * This is for user-created visual block quotes, NOT Bible passages.
  */
-function convertTipTapHeading(
+function convertTipTapToBlockQuoteParagraph(
   node: TipTapNode,
   options: ConversionOptions
-): HeadingNode {
+): ParagraphNode {
   const { preserveIds } = options;
+  const attrs = node.attrs || {};
   const children: DocumentNode[] = [];
-  const level = (node.attrs?.level as number) || 1;
 
+  // Extract content from blockquote
   if (node.content) {
     for (const child of node.content) {
-      const converted = convertTipTapToNode(child, options);
-      if (converted) {
-        children.push(converted);
+      if (child.type === 'paragraph' && child.content) {
+        // Flatten paragraph content into our paragraph
+        for (const textNode of child.content) {
+          const converted = convertTipTapToNode(textNode, options);
+          if (converted) {
+            children.push(converted);
+          }
+        }
+      } else {
+        // Handle other node types
+        const converted = convertTipTapToNode(child, options);
+        if (converted) {
+          children.push(converted);
+        }
       }
     }
   }
 
-  // Ensure at least one text node (same as paragraph)
+  // Ensure at least one text node
   if (children.length === 0) {
     children.push({
       id: createNodeId(),
@@ -681,14 +860,125 @@ function convertTipTapHeading(
   }
 
   return {
+    id: preserveIds && attrs.nodeId
+      ? (attrs.nodeId as NodeId)
+      : createNodeId(),
+    type: 'paragraph',
+    version: 1,
+    updatedAt: createTimestamp(),
+    children,
+    isBlockQuote: true, // Mark as visual block quote formatting
+    textAlign: attrs.textAlign as 'left' | 'center' | 'right' | 'justify' | undefined,
+  };
+}
+
+/**
+ * Convert TipTap heading to ParagraphNode with headingLevel.
+ */
+function convertTipTapHeadingToParagraph(
+  node: TipTapNode,
+  options: ConversionOptions
+): ParagraphNode {
+  const { preserveIds } = options;
+  const children: DocumentNode[] = [];
+  // Clamp level to 1-3
+  const rawLevel = (node.attrs?.level as number) || 1;
+  const level = Math.min(3, Math.max(1, rawLevel)) as 1 | 2 | 3;
+
+  if (node.content) {
+    for (const child of node.content) {
+      const converted = convertTipTapToNode(child, options);
+      if (converted) {
+        children.push(converted);
+      }
+    }
+  }
+
+  // Ensure at least one text node
+  if (children.length === 0) {
+    children.push({
+      id: createNodeId(),
+      type: 'text',
+      version: 1,
+      updatedAt: createTimestamp(),
+      content: '',
+    });
+  }
+
+  const result: ParagraphNode = {
     id: preserveIds && node.attrs?.nodeId
       ? (node.attrs.nodeId as NodeId)
       : createNodeId(),
-    type: 'heading',
+    type: 'paragraph',
     version: 1,
     updatedAt: createTimestamp(),
-    level: level as 1 | 2 | 3 | 4 | 5 | 6,
     children,
+    headingLevel: level,
+  };
+
+  // Preserve textAlign if present
+  if (node.attrs?.textAlign) {
+    result.textAlign = node.attrs.textAlign as 'left' | 'center' | 'right' | 'justify';
+  }
+
+  return result;
+}
+
+/**
+ * Convert TipTap list to array of ParagraphNodes with listStyle.
+ * Returns first item - caller should handle multiple items.
+ */
+function convertTipTapListToParagraphs(
+  node: TipTapNode,
+  options: ConversionOptions
+): ParagraphNode | null {
+  const listStyle: 'bullet' | 'ordered' = node.type === 'orderedList' ? 'ordered' : 'bullet';
+  const items = node.content || [];
+
+  // Convert first list item (TipTap typically flattens during sync)
+  if (items.length === 0) {
+    return null;
+  }
+
+  const listItem = items[0]!;
+  const { preserveIds } = options;
+  const children: DocumentNode[] = [];
+
+  // List items contain paragraphs
+  if (listItem.content) {
+    for (const child of listItem.content) {
+      if (child.type === 'paragraph' && child.content) {
+        for (const textChild of child.content) {
+          const converted = convertTipTapToNode(textChild, options);
+          if (converted) {
+            children.push(converted);
+          }
+        }
+      }
+    }
+  }
+
+  // Ensure at least one text node
+  if (children.length === 0) {
+    children.push({
+      id: createNodeId(),
+      type: 'text',
+      version: 1,
+      updatedAt: createTimestamp(),
+      content: '',
+    });
+  }
+
+  return {
+    id: preserveIds && listItem.attrs?.nodeId
+      ? (listItem.attrs.nodeId as NodeId)
+      : createNodeId(),
+    type: 'paragraph',
+    version: 1,
+    updatedAt: createTimestamp(),
+    children,
+    listStyle,
+    listNumber: listStyle === 'ordered' ? 1 : undefined,
   };
 }
 
@@ -753,24 +1043,29 @@ function nodeToHtml(node: DocumentNode): string {
     for (const child of node.children) {
       content += nodeToHtml(child);
     }
+    // Handle heading formatting
+    if (node.headingLevel) {
+      return `<h${node.headingLevel}>${content}</h${node.headingLevel}>`;
+    }
+    // Handle list formatting
+    if (node.listStyle) {
+      const listTag = node.listStyle === 'ordered' ? 'ol' : 'ul';
+      return `<${listTag}><li>${content}</li></${listTag}>`;
+    }
+    // Handle block quote formatting (visual, NOT Bible passage)
+    if (node.isBlockQuote) {
+      return `<blockquote>${content}</blockquote>`;
+    }
     return `<p>${content}</p>`;
   }
 
-  if (isQuoteBlockNode(node)) {
+  if (isPassageNode(node)) {
     let content = '';
     for (const child of node.children) {
       content += nodeToHtml(child);
     }
     const ref = node.metadata.reference?.normalizedReference ?? 'Unknown';
-    return `<div class="bible-quote" data-quote-id="${node.id}" data-reference="${escapeHtml(ref)}">${content}</div>`;
-  }
-
-  if (isHeadingNode(node)) {
-    let content = '';
-    for (const child of node.children) {
-      content += nodeToHtml(child);
-    }
-    return `<h${node.level}>${content}</h${node.level}>`;
+    return `<div class="bible-passage" data-passage-id="${node.id}" data-reference="${escapeHtml(ref)}">${content}</div>`;
   }
 
   if (isTextNode(node)) {
@@ -861,12 +1156,59 @@ function elementToNode(element: Element): DocumentNode | null {
 
     case 'DIV':
     case 'BLOCKQUOTE': {
-      const quoteId = element.getAttribute('data-quote-id') || createNodeId();
-      const reference = element.getAttribute('data-reference') || 'Unknown';
+      const passageId = element.getAttribute('data-passage-id') || element.getAttribute('data-quote-id');
+      const reference = element.getAttribute('data-reference');
 
-      // Only treat as quote_block if it has the data-quote-id or data-reference attribute
-      // or if it's a blockquote (for legacy support)
-      if (tagName === 'DIV' && !element.hasAttribute('data-quote-id') && !element.hasAttribute('data-reference') && !element.classList.contains('quote-block')) {
+      // Check if this is a Bible passage (has passage/reference metadata)
+      const isBiblePassage = 
+        passageId !== null ||
+        reference !== null ||
+        element.classList.contains('bible-passage') ||
+        element.classList.contains('bible-quote') ||
+        element.classList.contains('quote-block');
+
+      if (isBiblePassage) {
+        // This is a Bible passage - create PassageNode
+        const refString = reference || 'Unknown';
+        return {
+          id: (passageId || createNodeId()) as NodeId,
+          type: 'passage',
+          version: 1,
+          updatedAt: createTimestamp(),
+          metadata: {
+            reference: {
+              book: extractBook(refString),
+              chapter: 0,
+              verseStart: null,
+              verseEnd: null,
+              originalText: refString,
+              normalizedReference: refString,
+            },
+            detection: {
+              confidence: 0.5,
+              confidenceLevel: 'medium',
+              translation: 'KJV',
+              translationAutoDetected: false,
+              verseText: '',
+              isPartialMatch: false,
+            },
+            interjections: [],
+            userVerified: false,
+          },
+          children: extractInlineNodes(element),
+        } as PassageNode;
+      } else if (tagName === 'BLOCKQUOTE') {
+        // Visual block quote (formatting only) - create ParagraphNode with isBlockQuote
+        return {
+          id: createNodeId(),
+          type: 'paragraph',
+          version: 1,
+          updatedAt: createTimestamp(),
+          isBlockQuote: true,
+          children: extractInlineNodes(element),
+        };
+      } else {
+        // Plain div - create regular paragraph
         return {
           id: createNodeId(),
           type: 'paragraph',
@@ -875,52 +1217,56 @@ function elementToNode(element: Element): DocumentNode | null {
           children: extractInlineNodes(element),
         };
       }
-
-      return {
-        id: quoteId as NodeId,
-        type: 'quote_block',
-        version: 1,
-        updatedAt: createTimestamp(),
-        metadata: {
-          reference: {
-            book: extractBook(reference),
-            chapter: 0,
-            verseStart: null,
-            verseEnd: null,
-            originalText: reference,
-            normalizedReference: reference,
-          },
-          detection: {
-            confidence: 0.5,
-            confidenceLevel: 'medium',
-            translation: 'KJV',
-            translationAutoDetected: false,
-            verseText: '',
-            isPartialMatch: false,
-          },
-          interjections: [],
-          userVerified: false,
-        },
-        children: extractInlineNodes(element),
-      } as QuoteBlockNode;
     }
 
     case 'H1':
     case 'H2':
-    case 'H3':
+    case 'H3': {
+      // H1-H3 become paragraphs with headingLevel
+      const levelChar = tagName.charAt(1);
+      const level = parseInt(levelChar, 10) as 1 | 2 | 3;
+      return {
+        id: createNodeId(),
+        type: 'paragraph',
+        version: 1,
+        updatedAt: createTimestamp(),
+        headingLevel: level,
+        children: extractInlineNodes(element),
+      };
+    }
+
     case 'H4':
     case 'H5':
     case 'H6': {
-      const levelChar = tagName.charAt(1);
-      const level = parseInt(levelChar, 10) as 1 | 2 | 3 | 4 | 5 | 6;
+      // H4-H6 clamped to level 3
       return {
         id: createNodeId(),
-        type: 'heading',
+        type: 'paragraph',
         version: 1,
         updatedAt: createTimestamp(),
-        level,
+        headingLevel: 3,
         children: extractInlineNodes(element),
-      } as HeadingNode;
+      };
+    }
+
+    case 'UL':
+    case 'OL': {
+      // Convert list items to paragraphs with listStyle
+      const listStyle: 'bullet' | 'ordered' = tagName === 'OL' ? 'ordered' : 'bullet';
+      const listItems = element.querySelectorAll(':scope > li');
+      if (listItems.length > 0) {
+        // Return first item, others would need to be handled separately
+        return {
+          id: createNodeId(),
+          type: 'paragraph',
+          version: 1,
+          updatedAt: createTimestamp(),
+          listStyle,
+          listNumber: listStyle === 'ordered' ? 1 : undefined,
+          children: extractInlineNodes(listItems[0]!),
+        };
+      }
+      return null;
     }
 
     default:

@@ -1,5 +1,12 @@
 /**
  * Document Components - barrel export
+ *
+ * Node renderers for the 5 AST node types:
+ * - document (DocumentRenderer)
+ * - paragraph (ParagraphRenderer - also handles headingLevel/listStyle formatting)
+ * - text (TextRenderer)
+ * - quote (QuoteBlockRenderer)
+ * - interjection (InterjectionRenderer)
  */
 
 export { DocumentRenderer } from './DocumentRenderer';
@@ -19,6 +26,3 @@ export type { QuoteBlockRendererProps } from './QuoteBlockRenderer';
 
 export { InterjectionRenderer } from './InterjectionRenderer';
 export type { InterjectionRendererProps } from './InterjectionRenderer';
-
-export { HeadingRenderer } from './HeadingRenderer';
-export type { HeadingRendererProps } from './HeadingRenderer';

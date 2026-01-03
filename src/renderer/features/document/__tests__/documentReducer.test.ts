@@ -11,10 +11,10 @@ import {
   createNodeCreatedEvent,
   createNodeDeletedEvent,
   createTextChangedEvent,
-  createQuoteCreatedEvent,
-  createQuoteRemovedEvent,
-  createQuoteMetadataUpdatedEvent,
-  createQuoteVerifiedEvent,
+  createPassageCreatedEvent,
+  createPassageRemovedEvent,
+  createPassageMetadataUpdatedEvent,
+  createPassageVerifiedEvent,
   createInterjectionAddedEvent,
   createInterjectionRemovedEvent,
   createParagraphMergedEvent,
@@ -29,7 +29,7 @@ import type {
   DocumentRootNode,
   ParagraphNode,
   TextNode,
-  QuoteBlockNode,
+  PassageNode,
   InterjectionNode,
 } from '../../../../shared/documentModel';
 
@@ -75,7 +75,7 @@ function createTestState(): DocumentState {
       'para-1': { node: paragraph, parentId: 'root-1', path: ['root-1'] },
       'text-1': { node: textNode, parentId: 'para-1', path: ['root-1', 'para-1'] },
     },
-    quoteIndex: {
+    passageIndex: {
       byReference: {},
       byBook: {},
       all: [],
@@ -93,11 +93,11 @@ function createTestState(): DocumentState {
 }
 
 /**
- * Create a sample quote block for testing.
+ * Create a sample passage block for testing.
  */
-function createTestQuote(): QuoteBlockNode {
-  const quoteText: TextNode = {
-    id: 'quote-text-1',
+function createTestPassage(): PassageNode {
+  const passageText: TextNode = {
+    id: 'passage-text-1',
     type: 'text',
     version: 1,
     updatedAt: '2024-01-01T00:00:00.000Z',
@@ -105,8 +105,8 @@ function createTestQuote(): QuoteBlockNode {
   };
 
   return {
-    id: 'quote-1',
-    type: 'quote_block',
+    id: 'passage-1',
+    type: 'passage',
     version: 1,
     updatedAt: '2024-01-01T00:00:00.000Z',
     metadata: {
@@ -129,7 +129,7 @@ function createTestQuote(): QuoteBlockNode {
       interjections: [],
       userVerified: false,
     },
-    children: [quoteText],
+    children: [passageText],
   };
 }
 
@@ -340,139 +340,139 @@ describe('applyEvent - Quote Operations', () => {
     state = createTestState();
   });
 
-  describe('quote_created', () => {
-    it('should insert quote block into tree', () => {
-      const quote = createTestQuote();
-      const event = createQuoteCreatedEvent(quote, 'root-1', 1, [], 2, 'system');
+  describe('passage_created', () => {
+    it('should insert passage block into tree', () => {
+      const passage = createTestPassage();
+      const event = createPassageCreatedEvent(passage, 'root-1', 1, [], 2, 'system');
       const result = applyEvent(state, event);
 
-      expect(result.state.root.children.find(c => c.id === 'quote-1')).toBeDefined();
+      expect(result.state.root.children.find(c => c.id === 'passage-1')).toBeDefined();
     });
 
-    it('should add quote to quoteIndex by reference', () => {
-      const quote = createTestQuote();
-      const event = createQuoteCreatedEvent(quote, 'root-1', 1, [], 2, 'system');
+    it('should add passage to passageIndex by reference', () => {
+      const passage = createTestPassage();
+      const event = createPassageCreatedEvent(passage, 'root-1', 1, [], 2, 'system');
       const result = applyEvent(state, event);
 
-      expect(result.state.quoteIndex.byReference['John 3:16']).toContain('quote-1');
+      expect(result.state.passageIndex.byReference['John 3:16']).toContain('passage-1');
     });
 
-    it('should add quote to quoteIndex by book', () => {
-      const quote = createTestQuote();
-      const event = createQuoteCreatedEvent(quote, 'root-1', 1, [], 2, 'system');
+    it('should add passage to passageIndex by book', () => {
+      const passage = createTestPassage();
+      const event = createPassageCreatedEvent(passage, 'root-1', 1, [], 2, 'system');
       const result = applyEvent(state, event);
 
-      expect(result.state.quoteIndex.byBook['John']).toContain('quote-1');
+      expect(result.state.passageIndex.byBook['John']).toContain('passage-1');
     });
 
-    it('should add quote children to nodeIndex', () => {
-      const quote = createTestQuote();
-      const event = createQuoteCreatedEvent(quote, 'root-1', 1, [], 2, 'system');
+    it('should add passage children to nodeIndex', () => {
+      const passage = createTestPassage();
+      const event = createPassageCreatedEvent(passage, 'root-1', 1, [], 2, 'system');
       const result = applyEvent(state, event);
 
-      expect(result.state.nodeIndex['quote-text-1']).toBeDefined();
-      expect(result.state.nodeIndex['quote-text-1']!.parentId).toBe('quote-1');
+      expect(result.state.nodeIndex['passage-text-1']).toBeDefined();
+      expect(result.state.nodeIndex['passage-text-1']!.parentId).toBe('passage-1');
     });
   });
 
-  describe('quote_removed', () => {
-    let stateWithQuote: DocumentState;
+  describe('passage_removed', () => {
+    let stateWithPassage: DocumentState;
 
     beforeEach(() => {
-      // Create state with a quote
-      const quote = createTestQuote();
-      const event = createQuoteCreatedEvent(quote, 'root-1', 1, [], 2, 'system');
+      // Create state with a passage
+      const passage = createTestPassage();
+      const event = createPassageCreatedEvent(passage, 'root-1', 1, [], 2, 'system');
       const result = applyEvent(state, event);
-      stateWithQuote = result.state;
+      stateWithPassage = result.state;
     });
 
-    it('should remove quote from tree', () => {
-      const quote = stateWithQuote.nodeIndex['quote-1']!.node as QuoteBlockNode;
+    it('should remove passage from tree', () => {
+      const passage = stateWithPassage.nodeIndex['passage-1']!.node as PassageNode;
       const replacements = [createParagraphNode([createTextNode('Replacement')])];
-      const event = createQuoteRemovedEvent('quote-1', quote, replacements, 3, 'user');
-      const result = applyEvent(stateWithQuote, event);
+      const event = createPassageRemovedEvent('passage-1', passage, replacements, 3, 'user');
+      const result = applyEvent(stateWithPassage, event);
 
-      expect(result.state.root.children.find(c => c.id === 'quote-1')).toBeUndefined();
+      expect(result.state.root.children.find(c => c.id === 'passage-1')).toBeUndefined();
     });
 
-    it('should remove quote from quoteIndex', () => {
-      const quote = stateWithQuote.nodeIndex['quote-1']!.node as QuoteBlockNode;
+    it('should remove passage from passageIndex', () => {
+      const passage = stateWithPassage.nodeIndex['passage-1']!.node as PassageNode;
       const replacements = [createParagraphNode([createTextNode('Replacement')])];
-      const event = createQuoteRemovedEvent('quote-1', quote, replacements, 3, 'user');
-      const result = applyEvent(stateWithQuote, event);
+      const event = createPassageRemovedEvent('passage-1', passage, replacements, 3, 'user');
+      const result = applyEvent(stateWithPassage, event);
 
-      expect(result.state.quoteIndex.byReference['John 3:16']).not.toContain('quote-1');
-      expect(result.state.quoteIndex.byBook['John']).not.toContain('quote-1');
+      expect(result.state.passageIndex.byReference['John 3:16']).not.toContain('passage-1');
+      expect(result.state.passageIndex.byBook['John']).not.toContain('passage-1');
     });
 
     it('should insert replacement nodes', () => {
-      const quote = stateWithQuote.nodeIndex['quote-1']!.node as QuoteBlockNode;
+      const passage = stateWithPassage.nodeIndex['passage-1']!.node as PassageNode;
       const replacement = createParagraphNode([createTextNode('Replacement')]);
       replacement.id = 'para-replacement';
-      const event = createQuoteRemovedEvent('quote-1', quote, [replacement], 3, 'user');
-      const result = applyEvent(stateWithQuote, event);
+      const event = createPassageRemovedEvent('passage-1', passage, [replacement], 3, 'user');
+      const result = applyEvent(stateWithPassage, event);
 
       expect(result.state.root.children.find(c => c.id === 'para-replacement')).toBeDefined();
     });
   });
 
-  describe('quote_metadata_updated', () => {
-    let stateWithQuote: DocumentState;
+  describe('passage_metadata_updated', () => {
+    let stateWithPassage: DocumentState;
 
     beforeEach(() => {
-      const quote = createTestQuote();
-      const event = createQuoteCreatedEvent(quote, 'root-1', 1, [], 2, 'system');
+      const passage = createTestPassage();
+      const event = createPassageCreatedEvent(passage, 'root-1', 1, [], 2, 'system');
       const result = applyEvent(state, event);
-      stateWithQuote = result.state;
+      stateWithPassage = result.state;
     });
 
-    it('should update quote metadata', () => {
-      const quote = stateWithQuote.nodeIndex['quote-1']!.node as QuoteBlockNode;
-      const newMeta = { ...quote.metadata, userVerified: true };
-      const event = createQuoteMetadataUpdatedEvent(
-        'quote-1',
-        quote.metadata,
+    it('should update passage metadata', () => {
+      const passage = stateWithPassage.nodeIndex['passage-1']!.node as PassageNode;
+      const newMeta = { ...passage.metadata, userVerified: true };
+      const event = createPassageMetadataUpdatedEvent(
+        'passage-1',
+        passage.metadata,
         newMeta,
         ['userVerified'],
         3,
         'user'
       );
-      const result = applyEvent(stateWithQuote, event);
+      const result = applyEvent(stateWithPassage, event);
 
-      const updatedQuote = result.state.nodeIndex['quote-1']!.node as QuoteBlockNode;
-      expect(updatedQuote.metadata.userVerified).toBe(true);
+      const updatedPassage = result.state.nodeIndex['passage-1']!.node as PassageNode;
+      expect(updatedPassage.metadata.userVerified).toBe(true);
     });
   });
 
-  describe('quote_verified', () => {
-    let stateWithQuote: DocumentState;
+  describe('passage_verified', () => {
+    let stateWithPassage: DocumentState;
 
     beforeEach(() => {
-      const quote = createTestQuote();
-      const event = createQuoteCreatedEvent(quote, 'root-1', 1, [], 2, 'system');
+      const passage = createTestPassage();
+      const event = createPassageCreatedEvent(passage, 'root-1', 1, [], 2, 'system');
       const result = applyEvent(state, event);
-      stateWithQuote = result.state;
+      stateWithPassage = result.state;
     });
 
     it('should set userVerified to true', () => {
-      const event = createQuoteVerifiedEvent('quote-1', true, 'Looks good', 3, 'user');
-      const result = applyEvent(stateWithQuote, event);
+      const event = createPassageVerifiedEvent('passage-1', true, 'Looks good', 3, 'user');
+      const result = applyEvent(stateWithPassage, event);
 
-      const quote = result.state.nodeIndex['quote-1']!.node as QuoteBlockNode;
-      expect(quote.metadata.userVerified).toBe(true);
+      const passage = result.state.nodeIndex['passage-1']!.node as PassageNode;
+      expect(passage.metadata.userVerified).toBe(true);
     });
 
     it('should set userVerified to false', () => {
       // First verify it
-      const verify = createQuoteVerifiedEvent('quote-1', true, undefined, 3, 'user');
-      const verifiedState = applyEvent(stateWithQuote, verify).state;
+      const verify = createPassageVerifiedEvent('passage-1', true, undefined, 3, 'user');
+      const verifiedState = applyEvent(stateWithPassage, verify).state;
 
       // Then unverify
-      const unverify = createQuoteVerifiedEvent('quote-1', false, undefined, 4, 'user');
+      const unverify = createPassageVerifiedEvent('passage-1', false, undefined, 4, 'user');
       const result = applyEvent(verifiedState, unverify);
 
-      const quote = result.state.nodeIndex['quote-1']!.node as QuoteBlockNode;
-      expect(quote.metadata.userVerified).toBe(false);
+      const passage = result.state.nodeIndex['passage-1']!.node as PassageNode;
+      expect(passage.metadata.userVerified).toBe(false);
     });
   });
 });
@@ -482,18 +482,18 @@ describe('applyEvent - Quote Operations', () => {
 // ============================================================================
 
 describe('applyEvent - Interjection Operations', () => {
-  let stateWithQuote: DocumentState;
+  let stateWithPassage: DocumentState;
 
   beforeEach(() => {
     const state = createTestState();
-    const quote = createTestQuote();
-    const event = createQuoteCreatedEvent(quote, 'root-1', 1, [], 2, 'system');
+    const passage = createTestPassage();
+    const event = createPassageCreatedEvent(passage, 'root-1', 1, [], 2, 'system');
     const result = applyEvent(state, event);
-    stateWithQuote = result.state;
+    stateWithPassage = result.state;
   });
 
   describe('interjection_added', () => {
-    it('should add interjection to quote children', () => {
+    it('should add interjection to passage children', () => {
       const interjection: InterjectionNode = {
         id: 'interj-1',
         type: 'interjection',
@@ -502,11 +502,11 @@ describe('applyEvent - Interjection Operations', () => {
         content: '[speaker emphasis]',
         metadataId: 'interj-meta-1',
       };
-      const event = createInterjectionAddedEvent('quote-1', interjection, 1, 3, 'user');
-      const result = applyEvent(stateWithQuote, event);
+      const event = createInterjectionAddedEvent('passage-1', interjection, 1, 3, 'user');
+      const result = applyEvent(stateWithPassage, event);
 
-      const quote = result.state.nodeIndex['quote-1']!.node as QuoteBlockNode;
-      expect(quote.children.find(c => c.id === 'interj-1')).toBeDefined();
+      const passage = result.state.nodeIndex['passage-1']!.node as PassageNode;
+      expect(passage.children.find(c => c.id === 'interj-1')).toBeDefined();
     });
 
     it('should add interjection to nodeIndex', () => {
@@ -518,11 +518,11 @@ describe('applyEvent - Interjection Operations', () => {
         content: '[speaker emphasis]',
         metadataId: 'interj-meta-1',
       };
-      const event = createInterjectionAddedEvent('quote-1', interjection, 1, 3, 'user');
-      const result = applyEvent(stateWithQuote, event);
+      const event = createInterjectionAddedEvent('passage-1', interjection, 1, 3, 'user');
+      const result = applyEvent(stateWithPassage, event);
 
       expect(result.state.nodeIndex['interj-1']).toBeDefined();
-      expect(result.state.nodeIndex['interj-1']!.parentId).toBe('quote-1');
+      expect(result.state.nodeIndex['interj-1']!.parentId).toBe('passage-1');
     });
   });
 
@@ -538,23 +538,23 @@ describe('applyEvent - Interjection Operations', () => {
         content: '[emphasis]',
         metadataId: 'interj-meta-1',
       };
-      const addEvent = createInterjectionAddedEvent('quote-1', interjection, 1, 3, 'user');
-      const result = applyEvent(stateWithQuote, addEvent);
+      const addEvent = createInterjectionAddedEvent('passage-1', interjection, 1, 3, 'user');
+      const result = applyEvent(stateWithPassage, addEvent);
       stateWithInterjection = result.state;
     });
 
-    it('should remove interjection from quote children', () => {
+    it('should remove interjection from passage children', () => {
       const interj = stateWithInterjection.nodeIndex['interj-1']!.node as InterjectionNode;
-      const event = createInterjectionRemovedEvent('quote-1', 'interj-1', interj, 1, 4, 'user');
+      const event = createInterjectionRemovedEvent('passage-1', 'interj-1', interj, 1, 4, 'user');
       const result = applyEvent(stateWithInterjection, event);
 
-      const quote = result.state.nodeIndex['quote-1']!.node as QuoteBlockNode;
-      expect(quote.children.find(c => c.id === 'interj-1')).toBeUndefined();
+      const passage = result.state.nodeIndex['passage-1']!.node as PassageNode;
+      expect(passage.children.find(c => c.id === 'interj-1')).toBeUndefined();
     });
 
     it('should remove interjection from nodeIndex', () => {
       const interj = stateWithInterjection.nodeIndex['interj-1']!.node as InterjectionNode;
-      const event = createInterjectionRemovedEvent('quote-1', 'interj-1', interj, 1, 4, 'user');
+      const event = createInterjectionRemovedEvent('passage-1', 'interj-1', interj, 1, 4, 'user');
       const result = applyEvent(stateWithInterjection, event);
 
       expect(result.state.nodeIndex['interj-1']).toBeUndefined();
@@ -839,8 +839,8 @@ describe('applyEvent - Error Handling', () => {
     expect(result.state).toBeDefined();
   });
 
-  it('should return error for non-existent quote in verification', () => {
-    const event = createQuoteVerifiedEvent('non-existent-quote', true, 'test', 2, 'user');
+  it('should return error for non-existent passage in verification', () => {
+    const event = createPassageVerifiedEvent('non-existent-passage', true, 'test', 2, 'user');
     const result = applyEvent(state, event);
 
     // Should handle gracefully
