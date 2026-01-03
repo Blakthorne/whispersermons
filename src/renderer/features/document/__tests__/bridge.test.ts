@@ -300,6 +300,50 @@ describe('AST to TipTap Conversion', () => {
     expect(result.data?.content.length).toBeGreaterThan(0);
     expect(result.data?.content?.[0]?.type).toBe('paragraph');
   });
+
+  it('should convert visual block quote paragraph to TipTap blockquote', () => {
+    // Create a paragraph with isBlockQuote=true (visual formatting, NOT Bible passage)
+    const blockQuotePara: ParagraphNode = {
+      id: 'blockquote-1' as NodeId,
+      type: 'paragraph',
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      children: [createTextNode('text-1', 'This is a visual block quote.')],
+      isBlockQuote: true,
+    };
+    const root = createDocumentRootNode([blockQuotePara], {});
+    const result = astToTipTapJson(root);
+
+    expect(result.success).toBe(true);
+    const blockquote = result.data?.content.find((n) => n.type === 'blockquote');
+    expect(blockquote).toBeDefined();
+    // Visual block quotes should NOT have Bible metadata
+    expect(blockquote?.attrs?.reference).toBeUndefined();
+    expect(blockquote?.attrs?.book).toBeUndefined();
+    expect(blockquote?.attrs?.isBiblePassage).toBeUndefined();
+    // Should preserve nodeId
+    expect(blockquote?.attrs?.nodeId).toBe('blockquote-1');
+  });
+
+  it('should convert visual block quote with text alignment', () => {
+    const blockQuotePara: ParagraphNode = {
+      id: 'blockquote-2' as NodeId,
+      type: 'paragraph',
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      children: [createTextNode('text-2', 'Centered block quote.')],
+      isBlockQuote: true,
+      textAlign: 'center',
+    };
+    const root = createDocumentRootNode([blockQuotePara], {});
+    const result = astToTipTapJson(root);
+
+    expect(result.success).toBe(true);
+    const blockquote = result.data?.content.find((n) => n.type === 'blockquote');
+    expect(blockquote).toBeDefined();
+    expect(blockquote?.attrs?.textAlign).toBe('center');
+    expect(blockquote?.attrs?.nodeId).toBe('blockquote-2');
+  });
 });
 
 // ============================================================================
@@ -416,6 +460,85 @@ describe('TipTap to AST Conversion', () => {
     // Should have 2 paragraphs, no horizontalRule node
     expect(result.data?.children.length).toBe(2);
     expect(result.data?.children.every((n) => n.type === 'paragraph')).toBe(true);
+  });
+
+  it('should convert TipTap blockquote without metadata to visual block quote paragraph', () => {
+    // Blockquote without Bible metadata = visual formatting
+    const doc: TipTapDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'blockquote',
+          attrs: { nodeId: 'visual-quote-1' },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'This is a visual block quote for emphasis.' }],
+            },
+          ],
+        },
+      ],
+    };
+    const result = tipTapJsonToAst(doc, { preserveIds: true });
+
+    expect(result.success).toBe(true);
+    const blockQuotePara = result.data?.children[0] as ParagraphNode;
+    expect(blockQuotePara.type).toBe('paragraph');
+    expect(blockQuotePara.isBlockQuote).toBe(true);
+    expect(blockQuotePara.id).toBe('visual-quote-1');
+    // Should NOT have Bible metadata
+    const textNode = blockQuotePara.children[0] as TextNode;
+    expect(textNode.content).toBe('This is a visual block quote for emphasis.');
+  });
+
+  it('should distinguish between Bible passage blockquote and visual blockquote', () => {
+    // Blockquote WITH Bible metadata = PassageNode
+    const doc: TipTapDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'blockquote',
+          attrs: {
+            nodeId: 'bible-passage-1',
+            reference: 'John 3:16',
+            book: 'John',
+            chapter: 3,
+            verseStart: 16,
+            isBiblePassage: true,
+          },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'For God so loved the world...' }],
+            },
+          ],
+        },
+        {
+          type: 'blockquote',
+          attrs: { nodeId: 'visual-quote-1' },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'This is just formatting.' }],
+            },
+          ],
+        },
+      ],
+    };
+    const result = tipTapJsonToAst(doc);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.children.length).toBe(2);
+    
+    // First should be PassageNode (has Bible metadata)
+    const passage = result.data?.children[0] as PassageNode;
+    expect(passage.type).toBe('passage');
+    expect(passage.metadata.reference?.book).toBe('John');
+    
+    // Second should be ParagraphNode with isBlockQuote (no Bible metadata)
+    const visualQuote = result.data?.children[1] as ParagraphNode;
+    expect(visualQuote.type).toBe('paragraph');
+    expect(visualQuote.isBlockQuote).toBe(true);
   });
 
   it('should handle empty blockquote', () => {
@@ -607,6 +730,43 @@ describe('Marks Round-Trip Conversion', () => {
     expect(resultText.marks).toHaveLength(1);
     expect(resultText.marks![0]!.type).toBe('highlight');
     expect(resultText.marks![0]!.attrs?.color).toBe('#ffff00');
+  });
+
+  it('should preserve visual block quotes through round-trip', () => {
+    // Create AST with visual block quote paragraph
+    const blockQuotePara: ParagraphNode = {
+      id: 'blockquote-1' as NodeId,
+      type: 'paragraph',
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      children: [createTextNode('text-1', 'This is a visual block quote.')],
+      isBlockQuote: true,
+      textAlign: 'center',
+    };
+    const root = createDocumentRootNode([blockQuotePara]);
+
+    // AST → TipTap
+    const tipTapResult = astToTipTapJson(root, { preserveIds: true });
+    expect(tipTapResult.success).toBe(true);
+    
+    // Check TipTap has blockquote without Bible metadata
+    const blockquote = tipTapResult.data?.content.find(n => n.type === 'blockquote');
+    expect(blockquote).toBeDefined();
+    expect(blockquote?.attrs?.nodeId).toBe('blockquote-1');
+    expect(blockquote?.attrs?.textAlign).toBe('center');
+    expect(blockquote?.attrs?.reference).toBeUndefined(); // No Bible metadata
+
+    // TipTap → AST
+    const astResult = tipTapJsonToAst(tipTapResult.data!, { preserveIds: true });
+    expect(astResult.success).toBe(true);
+    
+    const resultPara = astResult.data?.children[0] as ParagraphNode;
+    expect(resultPara.type).toBe('paragraph');
+    expect(resultPara.isBlockQuote).toBe(true);
+    expect(resultPara.textAlign).toBe('center');
+    expect(resultPara.id).toBe('blockquote-1');
+    const textNode = resultPara.children[0] as TextNode;
+    expect(textNode.content).toBe('This is a visual block quote.');
   });
 });
 

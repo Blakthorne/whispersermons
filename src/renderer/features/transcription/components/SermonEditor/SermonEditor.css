@@ -180,6 +180,50 @@
   text-align: left;
 }
 
+/* Visual Block Quotes (user-created formatting, NOT Bible passages) */
+.sermon-editor-content .ProseMirror blockquote.visual-blockquote {
+  margin: 1.5em 0;
+  padding: 1em 1.5em;
+  border-left: 4px solid var(--accent-color);
+  background: var(--blockquote-bg);
+  border-radius: 0 4px 4px 0;
+  font-style: normal;
+  color: var(--text-primary);
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.sermon-editor-content .ProseMirror blockquote.visual-blockquote p {
+  margin: 0 0 0.5em 0;
+}
+
+.sermon-editor-content .ProseMirror blockquote.visual-blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* Hover state for visual feedback in edit mode */
+.sermon-editor-content.editable .ProseMirror blockquote.visual-blockquote:hover {
+  border-left-color: var(--accent-color-hover, var(--accent-color));
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+/* Focus/selection state */
+.sermon-editor-content .ProseMirror blockquote.visual-blockquote.has-focus {
+  border-left-width: 5px;
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.2);
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .sermon-editor-content .ProseMirror blockquote.visual-blockquote {
+  border-left-color: rgba(var(--accent-rgb), 0.8);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+[data-theme="dark"] .sermon-editor-content.editable .ProseMirror blockquote.visual-blockquote:hover {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-left-color: var(--accent-color);
+}
+
 /* Selection */
 .sermon-editor-content .ProseMirror ::selection {
   background: var(--selection-bg);

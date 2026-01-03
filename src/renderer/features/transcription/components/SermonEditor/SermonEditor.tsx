@@ -7,6 +7,7 @@ import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import Paragraph from '@tiptap/extension-paragraph';
 import Heading from '@tiptap/extension-heading';
+import Blockquote from '@tiptap/extension-blockquote';
 import type { SermonDocument } from '../../../../types';
 import type { DocumentState, DocumentRootNode } from '../../../../../shared/documentModel';
 import {
@@ -66,6 +67,7 @@ function SermonEditor({
       StarterKit.configure({
         heading: false, // Disable built-in heading as we override it
         paragraph: false, // Disable built-in paragraph as we override it
+        blockquote: false, // Disable built-in blockquote as we override it
         undoRedo: false, // Disable TipTap's undo/redo to use our AST-based system
       }),
       Paragraph.extend({
@@ -99,6 +101,25 @@ function SermonEditor({
         },
       }).configure({
         levels: [1, 2, 3],
+      }),
+      Blockquote.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            nodeId: {
+              default: null,
+              parseHTML: (element) => element.getAttribute('data-node-id'),
+              renderHTML: (attrs) => {
+                if (!attrs.nodeId) return {};
+                return { 'data-node-id': attrs.nodeId };
+              },
+            },
+          };
+        },
+      }).configure({
+        HTMLAttributes: {
+          class: 'visual-blockquote',
+        },
       }),
       Link.configure({
         openOnClick: false,
