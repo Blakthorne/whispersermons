@@ -283,6 +283,8 @@ export interface DocumentRootNode extends BaseNode {
   biblePassage?: string;
   /** Speaker/Author (from audio metadata authors field) */
   speaker?: string;
+  /** Semantic tags extracted from content */
+  tags?: string[];
   /** Top-level children (paragraphs and passages) */
   children: DocumentNode[];
 }
@@ -567,6 +569,14 @@ export interface DocumentMetadataUpdatedEvent extends BaseEvent {
   previousBiblePassage?: string;
   /** New Bible passage */
   newBiblePassage?: string;
+  /** Previous speaker */
+  previousSpeaker?: string;
+  /** New speaker */
+  newSpeaker?: string;
+  /** Previous tags */
+  previousTags?: string[];
+  /** New tags */
+  newTags?: string[];
 }
 
 export interface DocumentImportedEvent extends BaseEvent {

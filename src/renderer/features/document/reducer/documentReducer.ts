@@ -751,12 +751,14 @@ function applyParagraphSplit(state: DocumentState, event: ParagraphSplitEvent): 
 }
 
 function applyDocumentMetadataUpdated(state: DocumentState, event: DocumentMetadataUpdatedEvent): DocumentState {
-  const { newTitle, newBiblePassage } = event;
+  const { newTitle, newBiblePassage, newSpeaker, newTags } = event;
 
   const updatedRoot: DocumentRootNode = {
     ...state.root,
     title: newTitle !== undefined ? newTitle : state.root.title,
     biblePassage: newBiblePassage !== undefined ? newBiblePassage : state.root.biblePassage,
+    speaker: newSpeaker !== undefined ? newSpeaker : state.root.speaker,
+    tags: newTags !== undefined ? newTags : state.root.tags,
     version: state.root.version + 1,
     updatedAt: event.timestamp,
   };

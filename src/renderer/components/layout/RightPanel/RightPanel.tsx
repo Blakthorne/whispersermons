@@ -15,7 +15,9 @@ import { DEFAULT_PANEL_WIDTH } from '../../../types/quoteReview';
 import { QuoteReviewPanel } from '../../../features/quote-review/components/QuoteReviewPanel';
 import type { QuoteReviewItem } from '../../../types/quoteReview';
 import type { SermonDocument } from '../../../types';
+import type { DocumentRootNode } from '../../../../shared/documentModel';
 import { DevASTPanel } from '../../../features/dev/components/DevASTPanel/DevASTPanel';
+import { DocumentMetadataPanel } from '../../../features/document/components';
 import { UnifiedEditorActions, type EditorMode } from './UnifiedEditorActions';
 import './RightPanel.css';
 
@@ -199,7 +201,7 @@ function SermonEditorLayout({
   sermonDocument: SermonDocument;
   documentSaveState: any;
   lastSavedAt: Date | null;
-  handleAstChange: any;
+  handleAstChange: (root: DocumentRootNode) => void;
   activeMode: EditorMode;
   setActiveMode: (mode: EditorMode) => void;
   isDev: boolean;
@@ -213,6 +215,58 @@ function SermonEditorLayout({
 
   const hasContent = wordCount > 0;
 
+  // Get the current AST root from the sermon document
+  const currentRoot = sermonDocument.documentState?.root;
+
+  // Metadata change handlers - update root node and propagate changes
+  const handleTitleChange = useCallback(
+    (newTitle: string) => {
+      if (!currentRoot) return;
+      const updatedRoot: DocumentRootNode = {
+        ...currentRoot,
+        title: newTitle,
+      };
+      handleAstChange(updatedRoot);
+    },
+    [currentRoot, handleAstChange]
+  );
+
+  const handleSpeakerChange = useCallback(
+    (newSpeaker: string) => {
+      if (!currentRoot) return;
+      const updatedRoot: DocumentRootNode = {
+        ...currentRoot,
+        speaker: newSpeaker,
+      };
+      handleAstChange(updatedRoot);
+    },
+    [currentRoot, handleAstChange]
+  );
+
+  const handleBiblePassageChange = useCallback(
+    (newBiblePassage: string) => {
+      if (!currentRoot) return;
+      const updatedRoot: DocumentRootNode = {
+        ...currentRoot,
+        biblePassage: newBiblePassage,
+      };
+      handleAstChange(updatedRoot);
+    },
+    [currentRoot, handleAstChange]
+  );
+
+  const handleTagsChange = useCallback(
+    (newTags: string[]) => {
+      if (!currentRoot) return;
+      const updatedRoot: DocumentRootNode = {
+        ...currentRoot,
+        tags: newTags,
+      };
+      handleAstChange(updatedRoot);
+    },
+    [currentRoot, handleAstChange]
+  );
+
   return (
     <div className="right-panel-container-inner">
       {/* Unified action bar - shared across editor modes */}
@@ -224,6 +278,20 @@ function SermonEditorLayout({
         hasContent={hasContent}
         quoteCount={quoteCount}
       />
+
+      {/* Document metadata panel - collapsible header for title, speaker, etc. */}
+      {currentRoot && (
+        <DocumentMetadataPanel
+          title={currentRoot.title || ''}
+          speaker={currentRoot.speaker || ''}
+          biblePassage={currentRoot.biblePassage || ''}
+          tags={currentRoot.tags || []}
+          onTitleChange={handleTitleChange}
+          onSpeakerChange={handleSpeakerChange}
+          onBiblePassageChange={handleBiblePassageChange}
+          onTagsChange={handleTagsChange}
+        />
+      )}
 
       <div className="right-panel-content-wrapper">
         <div className="right-panel-main-content">

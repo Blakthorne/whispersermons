@@ -7,6 +7,8 @@
  * - text (TextRenderer)
  * - quote (BiblePassageRenderer)
  * - interjection (InterjectionRenderer)
+ *
+ * Also includes the DocumentMetadataPanel for editing document properties.
  */
 
 export { DocumentRenderer } from './DocumentRenderer';
@@ -26,3 +28,11 @@ export type { BiblePassageRendererProps } from './BiblePassageRenderer';
 
 export { InterjectionRenderer } from './InterjectionRenderer';
 export type { InterjectionRendererProps } from './InterjectionRenderer';
+
+// Metadata editing panel
+export { DocumentMetadataPanel, EditableTextField, TagsInput } from './DocumentMetadataPanel';
+export type {
+  DocumentMetadataPanelProps,
+  EditableTextFieldProps,
+  TagsInputProps,
+} from './DocumentMetadataPanel';

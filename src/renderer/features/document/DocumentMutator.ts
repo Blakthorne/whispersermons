@@ -809,6 +809,38 @@ export class DocumentMutator {
     return this.applyAndNotify(event);
   }
 
+  /**
+   * Update document speaker.
+   */
+  updateSpeaker(newSpeaker: string, source: EventSource = 'user'): MutationResult {
+    const event = createDocumentMetadataUpdatedEvent(
+      {
+        previousSpeaker: this.state.root.speaker,
+        newSpeaker,
+      },
+      this.state.version + 1,
+      source
+    );
+
+    return this.applyAndNotify(event);
+  }
+
+  /**
+   * Update document tags.
+   */
+  updateTags(newTags: string[], source: EventSource = 'user'): MutationResult {
+    const event = createDocumentMetadataUpdatedEvent(
+      {
+        previousTags: this.state.root.tags,
+        newTags,
+      },
+      this.state.version + 1,
+      source
+    );
+
+    return this.applyAndNotify(event);
+  }
+
   // ============================================================================
   // BATCH OPERATIONS
   // ============================================================================

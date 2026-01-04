@@ -133,25 +133,9 @@ export function astToTipTapJson(
   try {
     const content: TipTapNode[] = [];
 
-    // Add title as H1 if present
-    if (root.title) {
-      content.push({
-        type: 'heading',
-        attrs: { level: 1, textAlign: 'center' },
-        content: [{ type: 'text', text: root.title }],
-      });
-    }
-
-    // Add Bible passage if present
-    if (root.biblePassage) {
-      content.push({
-        type: 'paragraph',
-        content: [
-          { type: 'text', text: 'Primary Reference: ', marks: [{ type: 'bold' }] },
-          { type: 'text', text: root.biblePassage },
-        ],
-      });
-    }
+    // Note: Title, speaker, biblePassage, and tags are NOT rendered in TipTap editor
+    // They are managed separately in the DocumentMetadataPanel UI component
+    // This keeps the editor clean and focused on content only
 
     // Convert children
     for (const child of root.children) {
@@ -578,9 +562,11 @@ export function tipTapJsonToAst(
       type: 'document',
       version: 1,
       updatedAt: createTimestamp(),
-      title: title || existingRoot?.title,
-      biblePassage: biblePassage || existingRoot?.biblePassage,
-      speaker: speaker || existingRoot?.speaker,
+      // Use extracted values directly (no fallback to existingRoot)
+      // If user deleted the title/passage in TipTap, they should be undefined
+      title: title,
+      biblePassage: biblePassage,
+      speaker: speaker,
       children,
     };
 

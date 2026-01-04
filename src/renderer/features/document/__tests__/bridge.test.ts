@@ -210,25 +210,26 @@ describe('AST to TipTap Conversion', () => {
     expect(result.data?.content).toBeDefined();
   });
 
-  it('should include title as H1', () => {
+  it('should NOT include title as H1 in TipTap (managed separately in metadata panel)', () => {
     const root = createSimpleDocumentRoot();
     const result = astToTipTapJson(root);
 
     expect(result.success).toBe(true);
+    // Title should NOT be rendered in TipTap content
     const h1 = result.data?.content.find((n) => n.type === 'heading' && n.attrs?.level === 1);
-    expect(h1).toBeDefined();
-    expect(h1?.content?.[0]?.text).toBe('Test Document');
+    expect(h1).toBeUndefined();
   });
 
-  it('should include Bible passage', () => {
+  it('should NOT include Bible passage in TipTap (managed separately in metadata panel)', () => {
     const root = createDocumentWithPassage();
     const result = astToTipTapJson(root);
 
     expect(result.success).toBe(true);
+    // Bible passage should NOT be rendered in TipTap content
     const pasagePara = result.data?.content.find(
       (n) => n.type === 'paragraph' && n.content?.some((c) => c.text?.includes('Primary Reference'))
     );
-    expect(pasagePara).toBeDefined();
+    expect(pasagePara).toBeUndefined();
   });
 
   it('should convert paragraph nodes', () => {
@@ -880,8 +881,9 @@ describe('Round-Trip Conversions', () => {
     const astResult = tipTapJsonToAst(tipTapResult.data!);
     expect(astResult.success).toBe(true);
 
-    // Check title preserved
-    expect(astResult.data?.title).toBe(original.title);
+    // Check title NOT preserved through TipTap (it's managed separately)
+    // Title metadata is stored in the AST root but not rendered in TipTap content
+    expect(astResult.data?.title).toBeUndefined();
 
     // Check paragraph content preserved
     const originalPara = original.children[0] as ParagraphNode;
@@ -932,9 +934,10 @@ describe('Round-Trip Conversions', () => {
       root = astResult.data!;
     }
 
-    // Verify data still intact
-    expect(root.title).toBe('Document with Passage');
-    expect(root.biblePassage).toBe('John 3:16');
+    // Verify content still intact (but title/biblePassage NOT preserved through TipTap)
+    // Title and biblePassage are managed separately in the metadata panel
+    expect(root.title).toBeUndefined();
+    expect(root.biblePassage).toBeUndefined();
     const passage = root.children.find((n) => n.type === 'passage') as PassageNode;
     expect(passage).toBeDefined();
     expect(passage.metadata.reference?.book).toBe('John');
@@ -992,13 +995,14 @@ describe('Edge Cases', () => {
     const result = astToTipTapJson(root);
     expect(result.success).toBe(true);
 
-    // Should have: H1 (title), paragraph, bible_passage (passage), paragraph
+    // Should have: paragraph, bible_passage (passage), paragraph
+    // Title is NOT rendered in TipTap anymore (managed in metadata panel)
     const content = result.data?.content || [];
     const h1s = content.filter((n) => n.type === 'heading');
     const paras = content.filter((n) => n.type === 'paragraph');
     const biblePassages = content.filter((n) => n.type === 'bible_passage');
 
-    expect(h1s.length).toBe(1);
+    expect(h1s.length).toBe(0);
     expect(paras.length).toBe(2);
     expect(biblePassages.length).toBe(1);
   });

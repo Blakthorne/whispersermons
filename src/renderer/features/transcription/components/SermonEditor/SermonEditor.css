@@ -554,17 +554,6 @@
   transition: none;
 }
 
-.sermon-editor-content .ProseMirror .bible-passage::before {
-  content: '“';
-  color: var(--text-secondary);
-  opacity: 0.6;
-}
-
-.sermon-editor-content .ProseMirror .bible-passage::after {
-  content: '”';
-  color: var(--text-secondary);
-  opacity: 0.6;
-}
 
 .sermon-editor-content .ProseMirror .quote-block:hover,
 .sermon-editor-content .ProseMirror .quote-block.is-selected,

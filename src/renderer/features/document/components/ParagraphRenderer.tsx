@@ -9,7 +9,7 @@
 
 import React from 'react';
 import type { ParagraphNode, DocumentNode } from '../../../../shared/documentModel';
-import { isTextNode, isInterjectionNode, isQuoteNode } from '../../../../shared/documentModel';
+import { isTextNode, isInterjectionNode, isPassageNode } from '../../../../shared/documentModel';
 import { TextRenderer } from './TextRenderer';
 import { InterjectionRenderer } from './InterjectionRenderer';
 import { BiblePassageRenderer } from './BiblePassageRenderer';
@@ -38,7 +38,7 @@ function renderChild(
     return <InterjectionRenderer key={child.id} node={child} />;
   }
 
-  if (isQuoteNode(child)) {
+  if (isPassageNode(child)) {
     return <BiblePassageRenderer key={child.id} node={child} {...quoteOptions} />;
   }
 

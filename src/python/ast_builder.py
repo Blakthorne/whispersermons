@@ -143,7 +143,8 @@ class ASTBuilder:
             children=paragraph_nodes,
             title=title,
             bible_passage=bible_passage,
-            speaker=speaker
+            speaker=speaker,
+            tags=tags
         )
         self._end_stage('create_document')
         

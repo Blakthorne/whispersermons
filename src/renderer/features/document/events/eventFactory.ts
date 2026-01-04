@@ -496,6 +496,10 @@ export function createDocumentMetadataUpdatedEvent(
     newTitle?: string;
     previousBiblePassage?: string;
     newBiblePassage?: string;
+    previousSpeaker?: string;
+    newSpeaker?: string;
+    previousTags?: string[];
+    newTags?: string[];
   },
   resultingVersion: Version,
   source: EventSource = 'user'
@@ -732,6 +736,10 @@ export function generateInverseEvents(
             newTitle: event.previousTitle,
             previousBiblePassage: event.newBiblePassage,
             newBiblePassage: event.previousBiblePassage,
+            previousSpeaker: event.newSpeaker,
+            newSpeaker: event.previousSpeaker,
+            previousTags: event.newTags,
+            newTags: event.previousTags,
           },
           nextVersion,
           'user'

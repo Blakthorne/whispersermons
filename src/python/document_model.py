@@ -314,10 +314,12 @@ class DocumentRootNode(BaseNode):
     title: Optional[str]
     bible_passage: Optional[str]
     speaker: Optional[str]
+    tags: Optional[List[str]]
     children: List[Any]  # ParagraphNode, PassageNode, etc.
     
     def __init__(self, children: Optional[List[Any]] = None, title: Optional[str] = None,
                  bible_passage: Optional[str] = None, speaker: Optional[str] = None,
+                 tags: Optional[List[str]] = None,
                  id: Optional[NodeId] = None, version: Version = 1):
         self.id = id or generate_node_id()
         self.type = 'document'
@@ -326,6 +328,7 @@ class DocumentRootNode(BaseNode):
         self.title = title
         self.bible_passage = bible_passage
         self.speaker = speaker
+        self.tags = tags
         self.children = children or []
     
     def to_dict(self) -> Dict[str, Any]:
@@ -339,6 +342,8 @@ class DocumentRootNode(BaseNode):
             result['biblePassage'] = self.bible_passage
         if self.speaker is not None:
             result['speaker'] = self.speaker
+        if self.tags is not None:
+            result['tags'] = self.tags
         return result
 
 
@@ -727,14 +732,16 @@ def create_document_root(
     children: Optional[List[Any]] = None,
     title: Optional[str] = None,
     bible_passage: Optional[str] = None,
-    speaker: Optional[str] = None
+    speaker: Optional[str] = None,
+    tags: Optional[List[str]] = None
 ) -> DocumentRootNode:
     """Create a new document root node."""
     return DocumentRootNode(
         children=children,
         title=title,
         bible_passage=bible_passage,
-        speaker=speaker
+        speaker=speaker,
+        tags=tags
     )
 
 

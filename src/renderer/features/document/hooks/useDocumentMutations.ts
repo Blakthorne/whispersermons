@@ -71,6 +71,10 @@ export interface UseDocumentMutationsResult {
   updateTitle: (newTitle: string) => MutationResult | null;
   /** Update document Bible passage */
   updateBiblePassage: (newBiblePassage: string) => MutationResult | null;
+  /** Update document speaker */
+  updateSpeaker: (newSpeaker: string) => MutationResult | null;
+  /** Update document tags */
+  updateTags: (newTags: string[]) => MutationResult | null;
 
   // --- Batch operations ---
   /** Apply multiple mutations as a batch */
@@ -247,6 +251,22 @@ export function useDocumentMutations(): UseDocumentMutationsResult {
     [mutator]
   );
 
+  const updateSpeaker = useCallback(
+    (newSpeaker: string): MutationResult | null => {
+      if (!mutator) return null;
+      return mutator.updateSpeaker(newSpeaker);
+    },
+    [mutator]
+  );
+
+  const updateTags = useCallback(
+    (newTags: string[]): MutationResult | null => {
+      if (!mutator) return null;
+      return mutator.updateTags(newTags);
+    },
+    [mutator]
+  );
+
   // --- Batch operations ---
 
   const batch = useCallback(
@@ -275,6 +295,8 @@ export function useDocumentMutations(): UseDocumentMutationsResult {
     mergeParagraphs,
     updateTitle,
     updateBiblePassage,
+    updateSpeaker,
+    updateTags,
     batch,
   };
 }

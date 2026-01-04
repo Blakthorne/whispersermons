@@ -1,0 +1,355 @@
+/**
+ * DocumentMetadataPanel Styles
+ * 
+ * Collapsible panel for editing document metadata with inline-editable fields
+ * and tag pill editor. Uses app design system variables.
+ */
+
+/* ============================================================================
+   PANEL CONTAINER
+   ============================================================================ */
+
+.document-metadata-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin: 0 0 12px 0;
+  transition: all var(--transition-base);
+}
+
+.document-metadata-panel:hover {
+  border-color: var(--border-hover);
+}
+
+/* ============================================================================
+   HEADER (COLLAPSE TOGGLE)
+   ============================================================================ */
+
+.document-metadata-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.document-metadata-panel__header:hover {
+  background: var(--surface-hover);
+}
+
+.document-metadata-panel__header:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-border);
+}
+
+.document-metadata-panel__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+}
+
+.document-metadata-panel__header:hover .document-metadata-panel__toggle {
+  color: var(--text-secondary);
+}
+
+.document-metadata-panel__title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.document-metadata-panel__summary {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  padding-left: 12px;
+}
+
+/* ============================================================================
+   COLLAPSIBLE CONTENT
+   ============================================================================ */
+
+.document-metadata-panel__content {
+  overflow: hidden;
+  max-height: 500px;
+  transition: max-height var(--transition-base), opacity var(--transition-base), padding var(--transition-base);
+  opacity: 1;
+}
+
+.document-metadata-panel--collapsed .document-metadata-panel__content {
+  max-height: 0;
+  opacity: 0;
+  padding: 0;
+}
+
+.document-metadata-panel__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 12px 12px 12px;
+}
+
+/* ============================================================================
+   EDITABLE TEXT FIELD
+   ============================================================================ */
+
+.editable-text-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.editable-text-field--disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.editable-text-field__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.editable-text-field__icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.editable-text-field__content {
+  position: relative;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: text;
+  transition: all var(--transition-fast);
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.editable-text-field__content:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-secondary);
+}
+
+.editable-text-field__content:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.editable-text-field__content--editing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.editable-text-field__value {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.editable-text-field__value--empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.editable-text-field__input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  line-height: 1.4;
+  padding: 0;
+  margin: 0;
+  outline: none;
+  font-family: inherit;
+}
+
+.editable-text-field__input:focus,
+.editable-text-field__input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.editable-text-field__input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ============================================================================
+   TAGS INPUT
+   ============================================================================ */
+
+.document-metadata-panel__field--tags {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.document-metadata-panel__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.tags-input {
+  width: 100%;
+}
+
+.tags-input--disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.tags-input__container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  min-height: 36px;
+  cursor: text;
+  transition: all var(--transition-fast);
+}
+
+.tags-input__container:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-secondary);
+}
+
+.tags-input__container:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+/* Tag pill */
+.tags-input__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--accent-light);
+  border: 1px solid var(--accent-border);
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  color: var(--accent);
+  transition: all var(--transition-fast);
+}
+
+.tags-input__tag:hover {
+  background: var(--accent-glow);
+}
+
+.tags-input__tag-text {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tags-input__tag-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  opacity: 0.7;
+  transition: opacity var(--transition-fast);
+  border-radius: 50%;
+}
+
+.tags-input__tag-remove:hover {
+  opacity: 1;
+}
+
+.tags-input__tag-remove:focus {
+  outline: none;
+  opacity: 1;
+}
+
+/* Input field */
+.tags-input__input {
+  flex: 1;
+  min-width: 80px;
+  border: none;
+  background: transparent;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  padding: 2px 0;
+  margin: 0;
+  outline: none;
+  font-family: inherit;
+}
+
+.tags-input__input:focus,
+.tags-input__input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.tags-input__input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.tags-input__empty {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ============================================================================
+   RESPONSIVE & THEME ADJUSTMENTS
+   ============================================================================ */
+
+/* Ensure proper contrast in dark mode */
+[data-theme='dark'] .tags-input__tag {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+[data-theme='dark'] .tags-input__tag:hover {
+  background: rgba(59, 130, 246, 0.3);
+}
+
+/* Smaller screens */
+@media (max-width: 768px) {
+  .document-metadata-panel__fields {
+    gap: 10px;
+  }
+
+  .editable-text-field__content,
+  .tags-input__container {
+    padding: 6px 8px;
+  }
+}
