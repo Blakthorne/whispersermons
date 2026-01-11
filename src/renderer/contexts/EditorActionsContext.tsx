@@ -78,7 +78,7 @@ function findQuotePosition(editor: Editor, quoteId: NodeId): { pos: number; node
     if (result) return false; // Stop if found
 
     if (node.type.name === 'bible_passage') {
-      const nodeQuoteId = node.attrs.quoteId;
+      const nodeQuoteId = node.attrs.nodeId;
       if (nodeQuoteId === quoteId) {
         result = { pos, node };
         return false;
@@ -236,18 +236,18 @@ export function EditorActionsProvider({ children }: EditorActionsProviderProps):
       if (!found) return false;
 
       const { tr } = editor.state;
-      
+
       // We need to replace the content of the node
       // The node likely contains a text node
       const nodeStart = found.pos + 1; // Skip the open tag
       const nodeEnd = found.pos + found.node.nodeSize - 1; // Skip the close tag
-      
+
       // Create new text node
       const textNode = editor.schema.text(text);
-      
+
       // Replace content
       tr.replaceWith(nodeStart, nodeEnd, textNode);
-      
+
       // Also update modifiedAt
       tr.setNodeMarkup(found.pos, undefined, {
         ...found.node.attrs,
@@ -279,10 +279,47 @@ export function EditorActionsProvider({ children }: EditorActionsProviderProps):
       editor.commands.focus();
       editor.commands.setTextSelection(found.pos + 1);
 
-      // Scroll the quote into view
+      // Scroll the quote into view with quick smooth animation
       const dom = editor.view.domAtPos(found.pos);
       if (dom.node instanceof Element) {
-        dom.node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const element =
+          dom.node instanceof HTMLElement ? dom.node : (dom.node as any).parentElement;
+        if (element) {
+          // Find the actual scrollable container (sermon-editor-content)
+          const scrollContainer = element.closest('.sermon-editor-content');
+
+          if (scrollContainer) {
+            const elementRect = element.getBoundingClientRect();
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const offset =
+              elementRect.top -
+              containerRect.top -
+              containerRect.height / 2 +
+              elementRect.height / 2;
+            const targetScroll = scrollContainer.scrollTop + offset;
+
+            // Quick smooth scroll with 250ms duration
+            const startScroll = scrollContainer.scrollTop;
+            const startTime = performance.now();
+            const duration = 250; // Fast but smooth
+
+            const animateScroll = (currentTime: number) => {
+              const elapsed = currentTime - startTime;
+              const progress = Math.min(elapsed / duration, 1);
+
+              // Ease-out cubic for smooth deceleration
+              const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+              scrollContainer.scrollTop = startScroll + (targetScroll - startScroll) * easeProgress;
+
+              if (progress < 1) {
+                requestAnimationFrame(animateScroll);
+              }
+            };
+
+            requestAnimationFrame(animateScroll);
+          }
+        }
       }
 
       return true;

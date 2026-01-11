@@ -9,14 +9,14 @@
  */
 
 import React from 'react';
-import type { BiblePassageNode, ConfidenceLevel } from '../../../../shared/documentModel';
+import type { PassageNode, ConfidenceLevel } from '../../../../shared/documentModel';
 import { isTextNode, isInterjectionNode } from '../../../../shared/documentModel';
 import { TextRenderer } from './TextRenderer';
 import { InterjectionRenderer } from './InterjectionRenderer';
 
 export interface BiblePassageRendererProps {
   /** The quote block node to render */
-  node: BiblePassageNode;
+  node: PassageNode;
   /** Optional className for styling */
   className?: string;
   /** Whether to show the reference attribution (default: true) */
@@ -73,7 +73,7 @@ export function BiblePassageRenderer({
 
   // Render children (text and interjections)
   const renderChildren = (): React.ReactNode => {
-    return node.children.map((child) => {
+    return node.children.map((child: any) => {
       if (isTextNode(child)) {
         return <TextRenderer key={child.id} node={child} />;
       }
@@ -90,9 +90,7 @@ export function BiblePassageRenderer({
       data-node-id={node.id}
       data-confidence={detection?.confidence?.toFixed(2) ?? '0.00'}
     >
-      <div className="document-quote-content">
-        &ldquo;{renderChildren()}&rdquo;
-      </div>
+      <div className="document-quote-content">&ldquo;{renderChildren()}&rdquo;</div>
     </div>
   );
 }

@@ -1,13 +1,13 @@
 /* QuoteBoundaryEditor - Drag handles for adjusting quote boundaries */
 
 .quote-boundary-editor {
-  position: absolute;
+  position: fixed; /* Fixed positioning to escape parent containers */
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
   pointer-events: none;
-  z-index: 50;
+  z-index: 9990; /* High z-index to be above most UI elements */
 }
 
 .quote-boundary-editor:focus {
@@ -21,7 +21,7 @@
   height: 28px;
   cursor: col-resize;
   pointer-events: auto;
-  z-index: 51;
+  z-index: 9991; /* Slightly higher than container */
   transition: transform var(--transition-fast);
 }
 
@@ -111,7 +111,7 @@
   color: var(--text-secondary);
   white-space: nowrap;
   pointer-events: none;
-  z-index: 52;
+  z-index: 9992; /* Above handles */
   animation: instructionsFadeIn 0.3s ease-out;
 }
 
@@ -159,4 +159,95 @@
   .boundary-handle-grip {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   }
+}
+
+/* Word boundary snapping styles */
+
+/* Snap indicator - vertical line showing snap target */
+.boundary-snap-indicator {
+  position: absolute;
+  width: 2px;
+  background: var(--accent-hover, #4a90d9);
+  pointer-events: none;
+  z-index: 9993; /* Above instructions */
+  animation: snapPulse 0.3s ease-out;
+}
+
+.boundary-snap-indicator::before,
+.boundary-snap-indicator::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  background: var(--accent-hover, #4a90d9);
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+
+.boundary-snap-indicator::before {
+  top: -4px;
+}
+
+.boundary-snap-indicator::after {
+  bottom: -4px;
+}
+
+@keyframes snapPulse {
+  0% {
+    opacity: 0;
+    transform: scaleX(2);
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+/* Handle state when snapping */
+.boundary-handle.snap-active .boundary-handle-grip {
+  background: var(--accent-hover, #4a90d9);
+  box-shadow: 0 2px 12px rgba(var(--accent-rgb, 74, 144, 217), 0.4);
+}
+
+/* Container state when snapping */
+.quote-boundary-editor.snapping .boundary-highlight {
+  border-color: var(--accent-hover, #4a90d9);
+  background: rgba(var(--accent-rgb, 74, 144, 217), 0.1);
+}
+
+/* Word boundary hint marks (shown during drag) */
+.word-boundary-marks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.word-boundary-mark {
+  position: absolute;
+  width: 1px;
+  height: 4px;
+  background: rgba(var(--accent-rgb, 74, 144, 217), 0.3);
+  pointer-events: none;
+  transition: background 0.15s ease;
+}
+
+.word-boundary-mark.nearby {
+  height: 8px;
+  background: rgba(var(--accent-rgb, 74, 144, 217), 0.6);
+}
+
+/* Magnetism feedback */
+.boundary-handle.magnetized {
+  transition: transform 0.1s ease-out;
+}
+
+.boundary-handle.magnetized .boundary-handle-grip {
+  background: var(--success, #4ade80);
 }

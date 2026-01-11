@@ -1,0 +1,222 @@
+/**
+ * UndoToast Styles
+ *
+ * Prominent toast notification for undoable actions like auto-merge.
+ * Positioned at the bottom of the screen with clear visual hierarchy.
+ */
+
+.undo-toast-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 480px;
+  width: calc(100% - 48px);
+}
+
+.undo-toast {
+  background: var(--bg-toast, #2a2a3e);
+  border: 1px solid var(--border-toast, #4a4a66);
+  border-radius: 12px;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  animation: toast-slide-in 0.3s ease-out;
+}
+
+@keyframes toast-slide-in {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.undo-toast-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+/* Icon */
+.undo-toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-icon, rgba(100, 149, 237, 0.15));
+  border-radius: 8px;
+  color: var(--accent-color, #6495ed);
+  flex-shrink: 0;
+}
+
+/* Message */
+.undo-toast-message {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary, #e0e0e0);
+  line-height: 1.4;
+}
+
+/* Undo button */
+.undo-toast-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--accent-color, #6495ed);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.undo-toast-button:hover {
+  background: var(--accent-color-hover, #4a7cd1);
+  transform: translateY(-1px);
+}
+
+.undo-toast-button:active {
+  transform: translateY(0);
+}
+
+.undo-toast-shortcut {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+/* Dismiss button */
+.undo-toast-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-tertiary, #808080);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px;
+  margin-left: -4px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.undo-toast-dismiss:hover {
+  color: var(--text-primary, #e0e0e0);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.1));
+}
+
+/* Progress bar */
+.undo-toast-progress {
+  height: 3px;
+  background: var(--bg-progress, rgba(255, 255, 255, 0.1));
+}
+
+.undo-toast-progress-bar {
+  height: 100%;
+  background: var(--accent-color, #6495ed);
+  transition: width 0.1s linear;
+}
+
+/* Paused state (when hovering) */
+.undo-toast:hover .undo-toast-progress-bar {
+  background: var(--accent-color-paused, #8ab4f8);
+}
+
+/* Animation for exit */
+.undo-toast.exiting {
+  animation: toast-slide-out 0.2s ease-in forwards;
+}
+
+@keyframes toast-slide-out {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+}
+
+/* Dark mode optimizations */
+@media (prefers-color-scheme: dark) {
+  .undo-toast {
+    background: #2a2a3e;
+    border-color: #4a4a66;
+  }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 480px) {
+  .undo-toast-container {
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    transform: none;
+    width: auto;
+  }
+
+  .undo-toast-content {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .undo-toast-message {
+    flex-basis: 100%;
+    order: 1;
+  }
+
+  .undo-toast-icon {
+    order: 0;
+  }
+
+  .undo-toast-dismiss {
+    order: 0;
+    margin-left: auto;
+  }
+
+  .undo-toast-button {
+    order: 2;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .undo-toast-shortcut {
+    display: none;
+  }
+}
+
+/* Stacked toasts have slight offset */
+.undo-toast-container .undo-toast:not(:first-child) {
+  transform: scale(0.98);
+  opacity: 0.9;
+}
+
+.undo-toast-container .undo-toast:nth-child(3) {
+  transform: scale(0.96);
+  opacity: 0.8;
+}
+
+/* Maximum visible toasts */
+.undo-toast-container .undo-toast:nth-child(n+4) {
+  display: none;
+}

@@ -6,6 +6,7 @@
 
 export { useBoundaryMutation } from './useBoundaryMutation';
 export { useInterjectionDetection, COMMON_INTERJECTIONS } from './useInterjectionDetection';
+export { useInterjectionPanel } from './useInterjectionPanel';
 export { useQuoteCreation } from './useQuoteCreation';
 export { useParagraphMerge } from './useParagraphMerge';
 export { useQuoteKeyboardNavigation } from './useQuoteKeyboardNavigation';

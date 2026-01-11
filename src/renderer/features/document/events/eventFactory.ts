@@ -34,6 +34,9 @@ import type {
   PassageVerifiedEvent,
   InterjectionAddedEvent,
   InterjectionRemovedEvent,
+  PassageBoundaryChangedEvent,
+  ParagraphsMergedForPassageEvent,
+  InterjectionBoundaryChangedEvent,
   NodesJoinedEvent,
   NodeSplitEvent,
   ParagraphMergedEvent,
@@ -362,6 +365,88 @@ export function createInterjectionRemovedEvent(
     interjectionId,
     removedInterjection,
     previousIndex,
+  };
+}
+
+/**
+ * Create an InterjectionBoundaryChangedEvent.
+ */
+export function createInterjectionBoundaryChangedEvent(
+  passageId: NodeId,
+  interjectionId: NodeId,
+  previousBoundaries: { offsetStart: number; offsetEnd: number },
+  newBoundaries: { offsetStart: number; offsetEnd: number },
+  previousText: string,
+  newText: string,
+  resultingVersion: Version,
+  source: EventSource = 'user'
+): InterjectionBoundaryChangedEvent {
+  return {
+    id: createEventId(),
+    type: 'interjection_boundary_changed',
+    timestamp: createTimestamp(),
+    resultingVersion,
+    source,
+    passageId,
+    interjectionId,
+    previousBoundaries,
+    newBoundaries,
+    previousText,
+    newText,
+  };
+}
+
+/**
+ * Create a PassageBoundaryChangedEvent.
+ */
+export function createPassageBoundaryChangedEvent(
+  passageId: NodeId,
+  previousBoundaries: { startOffset: number; endOffset: number },
+  newBoundaries: { startOffset: number; endOffset: number },
+  previousContent: string,
+  newContent: string,
+  mergedParagraphIds: NodeId[] | undefined,
+  mergedParagraphs: ParagraphNode[] | undefined,
+  resultingVersion: Version,
+  source: EventSource = 'user'
+): PassageBoundaryChangedEvent {
+  return {
+    id: createEventId(),
+    type: 'passage_boundary_changed',
+    timestamp: createTimestamp(),
+    resultingVersion,
+    source,
+    passageId,
+    previousBoundaries,
+    newBoundaries,
+    previousContent,
+    newContent,
+    mergedParagraphIds,
+    mergedParagraphs,
+  };
+}
+
+/**
+ * Create a ParagraphsMergedForPassageEvent.
+ */
+export function createParagraphsMergedForPassageEvent(
+  resultParagraphId: NodeId,
+  mergedParagraphIds: NodeId[],
+  mergedParagraphs: ParagraphNode[],
+  triggeringPassageId: NodeId | undefined,
+  resultingVersion: Version,
+  source: EventSource = 'user'
+): ParagraphsMergedForPassageEvent {
+  return {
+    id: createEventId(),
+    type: 'paragraphs_merged_for_passage',
+    timestamp: createTimestamp(),
+    resultingVersion,
+    source,
+    resultParagraphId,
+    mergedParagraphIds,
+    mergedParagraphs,
+    triggeringPassageId,
   };
 }
 

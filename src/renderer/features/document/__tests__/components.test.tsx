@@ -117,9 +117,6 @@ function createPassageNode(
   };
 }
 
-// Backwards compatibility alias
-const createPassageBlockNode = createPassageNode;
-
 function createTestDocumentState(): DocumentState {
   const now = new Date().toISOString();
 

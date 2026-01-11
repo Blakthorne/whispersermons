@@ -464,6 +464,28 @@ export interface InterjectionRemovedEvent extends BaseEvent {
   previousIndex: number;
 }
 
+export interface InterjectionBoundaryChangedEvent extends BaseEvent {
+  type: 'interjection_boundary_changed';
+  /** ID of the parent passage */
+  passageId: NodeId;
+  /** ID of the interjection */
+  interjectionId: NodeId;
+  /** Previous boundaries */
+  previousBoundaries: {
+    offsetStart: number;
+    offsetEnd: number;
+  };
+  /** New boundaries */
+  newBoundaries: {
+    offsetStart: number;
+    offsetEnd: number;
+  };
+  /** Previous interjection text (for undo) */
+  previousText: string;
+  /** New interjection text */
+  newText: string;
+}
+
 export interface PassageBoundaryChangedEvent extends BaseEvent {
   type: 'passage_boundary_changed';
   /** ID of the passage */
@@ -631,6 +653,7 @@ export type DocumentEvent =
   | PassageBoundaryChangedEvent
   | InterjectionAddedEvent
   | InterjectionRemovedEvent
+  | InterjectionBoundaryChangedEvent
   | NodesJoinedEvent
   | NodeSplitEvent
   | ParagraphMergedEvent

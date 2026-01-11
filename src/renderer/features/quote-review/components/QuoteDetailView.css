@@ -247,6 +247,23 @@
   padding: 8px 0;
 }
 
+/* Interjection Info (Read-only) */
+.quote-detail-interjection-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quote-detail-info-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+  padding: 8px 12px;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
 .quote-detail-add-interjection {
   display: flex;
   gap: 8px;

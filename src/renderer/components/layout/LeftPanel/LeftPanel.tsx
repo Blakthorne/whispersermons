@@ -5,7 +5,6 @@ import { useAppTranscription } from '../../../contexts';
 import { useFFmpegStatus } from '../../../hooks';
 import { TranscriptionActions } from './TranscriptionActions';
 import { ErrorMessage } from './ErrorMessage';
-import { DonationSection } from './DonationSection';
 import { SystemWarning } from '../../ui';
 import { getAppInfo } from '../../../services/electronAPI';
 // Reuse SermonToggle styles for consistency
@@ -41,7 +40,7 @@ function LeftPanel(): React.JSX.Element {
       ...settings,
       testMode: isEnabled,
       // Enforce settings when enabling test mode
-      ...(isEnabled ? { language: 'en', processAsSermon: true } : {})
+      ...(isEnabled ? { language: 'en', processAsSermon: true } : {}),
     });
   };
 
@@ -113,8 +112,6 @@ function LeftPanel(): React.JSX.Element {
       <TranscriptionActions isFFmpegAvailable={isFFmpegAvailable} />
 
       <ErrorMessage />
-
-      <DonationSection />
     </div>
   );
 }

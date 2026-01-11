@@ -21,6 +21,9 @@ export {
   createPassageVerifiedEvent,
   createInterjectionAddedEvent,
   createInterjectionRemovedEvent,
+  createInterjectionBoundaryChangedEvent,
+  createPassageBoundaryChangedEvent,
+  createParagraphsMergedForPassageEvent,
   // Structure events
   createNodesJoinedEvent,
   createNodeSplitEvent,

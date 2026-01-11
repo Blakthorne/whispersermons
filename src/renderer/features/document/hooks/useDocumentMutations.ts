@@ -53,12 +53,30 @@ export interface UseDocumentMutationsResult {
   updatePassageMetadata: (passageId: NodeId, updates: Partial<PassageMetadata>) => MutationResult | null;
   /** Verify or unverify a passage */
   verifyPassage: (passageId: NodeId, verified: boolean, notes?: string) => MutationResult | null;
+  /** Change passage boundaries */
+  changePassageBoundary: (
+    passageId: NodeId,
+    options: {
+      newStartOffset: number;
+      newEndOffset: number;
+      newContent: string;
+      paragraphsToMerge?: NodeId[];
+    }
+  ) => MutationResult | null;
 
   // --- Interjection mutations ---
   /** Add an interjection to a passage */
   addInterjection: (passageId: NodeId, content: string, index: number) => MutationResult | null;
   /** Remove an interjection from a passage */
   removeInterjection: (passageId: NodeId, interjectionId: NodeId) => MutationResult | null;
+  /** Change interjection boundaries */
+  changeInterjectionBoundary: (
+    passageId: NodeId,
+    interjectionId: NodeId,
+    newOffsetStart: number,
+    newOffsetEnd: number,
+    newText: string
+  ) => MutationResult | null;
 
   // --- Paragraph mutations ---
   /** Split a paragraph at a character offset */
@@ -215,6 +233,42 @@ export function useDocumentMutations(): UseDocumentMutationsResult {
     [mutator]
   );
 
+  const changeInterjectionBoundary = useCallback(
+    (
+      passageId: NodeId,
+      interjectionId: NodeId,
+      newOffsetStart: number,
+      newOffsetEnd: number,
+      newText: string
+    ): MutationResult | null => {
+      if (!mutator) return null;
+      return mutator.changeInterjectionBoundary(
+        passageId,
+        interjectionId,
+        newOffsetStart,
+        newOffsetEnd,
+        newText
+      );
+    },
+    [mutator]
+  );
+
+  const changePassageBoundary = useCallback(
+    (
+      passageId: NodeId,
+      options: {
+        newStartOffset: number;
+        newEndOffset: number;
+        newContent: string;
+        paragraphsToMerge?: NodeId[];
+      }
+    ): MutationResult | null => {
+      if (!mutator) return null;
+      return mutator.changePassageBoundary(passageId, options);
+    },
+    [mutator]
+  );
+
   // --- Paragraph mutations ---
 
   const splitParagraph = useCallback(
@@ -289,8 +343,10 @@ export function useDocumentMutations(): UseDocumentMutationsResult {
     removePassage,
     updatePassageMetadata,
     verifyPassage,
+    changePassageBoundary,
     addInterjection,
     removeInterjection,
+    changeInterjectionBoundary,
     splitParagraph,
     mergeParagraphs,
     updateTitle,

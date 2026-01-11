@@ -995,6 +995,11 @@ export function astToHtml(root: DocumentRootNode, extractedReferences?: { refere
     html += `<h1 style="text-align: center">${escapeHtml(root.title)}</h1>`;
   }
 
+  // Speaker
+  if (root.speaker) {
+    html += `<p><strong>Speaker:</strong> ${escapeHtml(root.speaker)}</p>`;
+  }
+
   // Bible passage (Primary Reference)
   if (root.biblePassage) {
     const hasMultiple = root.biblePassage.includes(';');
@@ -1012,11 +1017,6 @@ export function astToHtml(root: DocumentRootNode, extractedReferences?: { refere
   if (extractedReferences && extractedReferences.tags.length > 0) {
     const tagsHtml = extractedReferences.tags.map((tag) => escapeHtml(tag)).join(', ');
     html += `<p><strong>Tags:</strong> ${tagsHtml}</p>`;
-  }
-
-  // Speaker
-  if (root.speaker) {
-    html += `<p><strong>Speaker:</strong> ${escapeHtml(root.speaker)}</p>`;
   }
 
   // Add separator if we have metadata

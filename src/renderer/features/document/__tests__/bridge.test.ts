@@ -880,19 +880,19 @@ describe('AST to HTML Conversion', () => {
     };
     const html = astToHtml(root, extractedRefs);
 
-    // Verify order: Title, Primary Reference, References from Sermon, Tags, Speaker, HR
+    // Verify order: Title, Speaker, Primary Reference, References from Sermon, Tags, HR
     const titlePos = html.indexOf('Test Sermon');
+    const speakerPos = html.indexOf('Speaker:');
     const primaryRefPos = html.indexOf('Primary Reference');
     const refsPos = html.indexOf('References from the Sermon');
     const tagsPos = html.indexOf('Tags:');
-    const speakerPos = html.indexOf('Speaker:');
     const hrPos = html.indexOf('<hr');
 
-    expect(titlePos).toBeLessThan(primaryRefPos);
+    expect(titlePos).toBeLessThan(speakerPos);
+    expect(speakerPos).toBeLessThan(primaryRefPos);
     expect(primaryRefPos).toBeLessThan(refsPos);
     expect(refsPos).toBeLessThan(tagsPos);
-    expect(tagsPos).toBeLessThan(speakerPos);
-    expect(speakerPos).toBeLessThan(hrPos);
+    expect(tagsPos).toBeLessThan(hrPos);
   });
 
   it('should include tags from root.tags via buildExtracted', () => {

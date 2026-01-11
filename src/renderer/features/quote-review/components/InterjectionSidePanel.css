@@ -1,0 +1,384 @@
+/**
+ * InterjectionSidePanel Styles
+ * 
+ * Side panel for managing interjections within passages.
+ * Uses CSS variables from the app theme for consistency.
+ */
+
+.interjection-side-panel {
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  height: 100%;
+  background: var(--bg-secondary, #1e1e2e);
+  border-left: 1px solid var(--border-color, #363650);
+  color: var(--text-primary, #e0e0e0);
+  font-size: 13px;
+}
+
+/* Header */
+.interjection-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color, #363650);
+  background: var(--bg-tertiary, #252537);
+}
+
+.interjection-panel-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.interjection-panel-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #a0a0a0);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.interjection-panel-close:hover {
+  color: var(--text-primary, #e0e0e0);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.1));
+}
+
+/* Info section */
+.interjection-panel-info {
+  padding: 12px 16px;
+  background: var(--bg-info, rgba(100, 149, 237, 0.1));
+  border-bottom: 1px solid var(--border-color, #363650);
+}
+
+.interjection-panel-info p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary, #a0a0a0);
+  line-height: 1.4;
+}
+
+/* Empty state */
+.interjection-panel-empty {
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.interjection-panel-empty p {
+  margin: 0 0 8px 0;
+  color: var(--text-secondary, #a0a0a0);
+}
+
+.interjection-panel-empty .hint {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-tertiary, #808080);
+}
+
+/* Interjection list */
+.interjection-panel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Individual interjection item */
+.interjection-panel-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color, #363650);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.interjection-panel-item:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+}
+
+.interjection-panel-item.selected {
+  background: var(--bg-selected, rgba(100, 149, 237, 0.15));
+  border-left: 3px solid var(--accent-color, #6495ed);
+}
+
+.interjection-panel-item.expanded {
+  background: var(--bg-expanded, rgba(255, 255, 255, 0.03));
+}
+
+/* Item header */
+.interjection-panel-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.interjection-panel-item-text {
+  flex: 1;
+  font-style: italic;
+  color: var(--text-primary, #e0e0e0);
+  word-break: break-word;
+}
+
+.interjection-panel-item-offsets {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 10px;
+  color: var(--text-tertiary, #808080);
+  white-space: nowrap;
+}
+
+/* Item details (expanded) */
+.interjection-panel-item-details {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color, #363650);
+}
+
+/* Context preview */
+.interjection-panel-context {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary, #a0a0a0);
+  background: var(--bg-code, rgba(0, 0, 0, 0.2));
+  padding: 8px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.interjection-panel-context .context-before,
+.interjection-panel-context .context-after {
+  color: var(--text-tertiary, #808080);
+}
+
+.interjection-panel-context .context-highlight {
+  color: var(--accent-color, #6495ed);
+  font-weight: 600;
+  background: var(--bg-highlight, rgba(100, 149, 237, 0.2));
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
+/* Boundary controls */
+.interjection-panel-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.boundary-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.boundary-label {
+  font-size: 11px;
+  color: var(--text-secondary, #a0a0a0);
+  width: 40px;
+}
+
+.boundary-btn {
+  background: var(--bg-button, #363650);
+  border: 1px solid var(--border-color, #4a4a66);
+  color: var(--text-primary, #e0e0e0);
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.boundary-btn:hover {
+  background: var(--bg-button-hover, #4a4a66);
+  border-color: var(--accent-color, #6495ed);
+}
+
+.boundary-btn:active {
+  transform: scale(0.95);
+}
+
+.boundary-value {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 11px;
+  color: var(--text-primary, #e0e0e0);
+  min-width: 36px;
+  text-align: center;
+}
+
+/* Remove button */
+.interjection-remove-btn {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: var(--bg-danger, rgba(239, 68, 68, 0.15));
+  border: 1px solid var(--border-danger, rgba(239, 68, 68, 0.3));
+  color: var(--text-danger, #ef4444);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s ease;
+}
+
+.interjection-remove-btn:hover {
+  background: var(--bg-danger-hover, rgba(239, 68, 68, 0.25));
+  border-color: var(--border-danger-hover, rgba(239, 68, 68, 0.5));
+}
+
+/* Add interjection section */
+.interjection-panel-add {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color, #363650);
+  background: var(--bg-tertiary, #252537);
+}
+
+.interjection-add-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-button, #363650);
+  border: 1px dashed var(--border-color, #4a4a66);
+  color: var(--text-secondary, #a0a0a0);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.interjection-add-btn:hover {
+  background: var(--bg-button-hover, #4a4a66);
+  border-style: solid;
+  color: var(--text-primary, #e0e0e0);
+}
+
+/* Add form */
+.interjection-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.interjection-add-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-input, #1a1a28);
+  border: 1px solid var(--border-color, #363650);
+  color: var(--text-primary, #e0e0e0);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.interjection-add-input:focus {
+  outline: none;
+  border-color: var(--accent-color, #6495ed);
+  box-shadow: 0 0 0 2px rgba(100, 149, 237, 0.2);
+}
+
+.interjection-add-input::placeholder {
+  color: var(--text-tertiary, #808080);
+}
+
+.interjection-add-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.interjection-add-confirm,
+.interjection-add-cancel {
+  flex: 1;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.interjection-add-confirm {
+  background: var(--accent-color, #6495ed);
+  border: none;
+  color: white;
+}
+
+.interjection-add-confirm:hover:not(:disabled) {
+  background: var(--accent-color-hover, #4a7cd1);
+}
+
+.interjection-add-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.interjection-add-cancel {
+  background: transparent;
+  border: 1px solid var(--border-color, #363650);
+  color: var(--text-secondary, #a0a0a0);
+}
+
+.interjection-add-cancel:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+}
+
+/* Keyboard shortcuts */
+.interjection-panel-shortcuts {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--bg-tertiary, #252537);
+  border-top: 1px solid var(--border-color, #363650);
+  font-size: 10px;
+  color: var(--text-tertiary, #808080);
+}
+
+.interjection-panel-shortcuts kbd {
+  display: inline-block;
+  padding: 2px 5px;
+  background: var(--bg-kbd, #1a1a28);
+  border: 1px solid var(--border-color, #363650);
+  border-radius: 3px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 9px;
+  margin-right: 2px;
+}
+
+/* Scrollbar styling */
+.interjection-panel-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.interjection-panel-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.interjection-panel-list::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.1));
+  border-radius: 3px;
+}
+
+.interjection-panel-list::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.2));
+}
+
+/* Animation for selection highlight */
+@keyframes pulse-highlight {
+  0% {
+    box-shadow: 0 0 0 0 rgba(100, 149, 237, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(100, 149, 237, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(100, 149, 237, 0);
+  }
+}
+
+.interjection-panel-item.selected {
+  animation: pulse-highlight 0.6s ease-out;
+}

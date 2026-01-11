@@ -20,6 +20,8 @@ import type {
   ParagraphNode,
   TextNode,
   PassageNode,
+  InterjectionNode,
+  InterjectionMetadata,
   NodeId,
   NodeIndex,
   PassageIndex,
@@ -35,6 +37,9 @@ import type {
   PassageVerifiedEvent,
   InterjectionAddedEvent,
   InterjectionRemovedEvent,
+  InterjectionBoundaryChangedEvent,
+  PassageBoundaryChangedEvent,
+  ParagraphsMergedForPassageEvent,
   ParagraphMergedEvent,
   ParagraphSplitEvent,
   DocumentMetadataUpdatedEvent,
@@ -46,6 +51,7 @@ import type {
 import {
   hasChildren,
   isPassageNode,
+  isTextNode,
   DEFAULT_UNDO_STACK_SIZE,
 } from '../../../../shared/documentModel';
 
@@ -138,6 +144,18 @@ export function applyEvent(
 
       case 'interjection_removed':
         newState = applyInterjectionRemoved(state, event);
+        break;
+
+      case 'interjection_boundary_changed':
+        newState = applyInterjectionBoundaryChanged(state, event);
+        break;
+
+      case 'passage_boundary_changed':
+        newState = applyPassageBoundaryChanged(state, event);
+        break;
+
+      case 'paragraphs_merged_for_passage':
+        newState = applyParagraphsMergedForPassage(state, event);
         break;
 
       case 'paragraph_merged':
@@ -643,6 +661,240 @@ function applyInterjectionRemoved(state: DocumentState, event: InterjectionRemov
   const newNodeIndex = { ...state.nodeIndex };
   newNodeIndex[passageId] = { ...passageEntry, node: updatedPassage };
   delete newNodeIndex[interjectionId];
+
+  return {
+    ...state,
+    version: event.resultingVersion,
+    root: newRoot,
+    eventLog: [...state.eventLog, event],
+    nodeIndex: newNodeIndex,
+    lastModified: event.timestamp,
+    redoStack: [],
+  };
+}
+
+function applyInterjectionBoundaryChanged(
+  state: DocumentState,
+  event: InterjectionBoundaryChangedEvent
+): DocumentState {
+  const { passageId, interjectionId, newBoundaries, newText } = event;
+
+  const passageEntry = state.nodeIndex[passageId];
+  if (!passageEntry || passageEntry.node.type !== 'passage') {
+    throw new Error(`Passage not found: ${passageId}`);
+  }
+
+  const passage = passageEntry.node as PassageNode;
+
+  // Update interjection node in children
+  const newChildren = passage.children.map((child) => {
+    if (child.type === 'interjection' && child.id === interjectionId) {
+      return {
+        ...child,
+        content: newText,
+        version: child.version + 1,
+        updatedAt: event.timestamp,
+      } as InterjectionNode;
+    }
+    return child;
+  });
+
+  // Update interjection metadata
+  const newInterjections: InterjectionMetadata[] = passage.metadata.interjections.map((interj) => {
+    if (interj.id === interjectionId) {
+      return {
+        ...interj,
+        text: newText,
+        offsetStart: newBoundaries.offsetStart,
+        offsetEnd: newBoundaries.offsetEnd,
+      };
+    }
+    return interj;
+  });
+
+  const updatedPassage: PassageNode = {
+    ...passage,
+    children: newChildren,
+    metadata: {
+      ...passage.metadata,
+      interjections: newInterjections,
+    },
+    version: passage.version + 1,
+    updatedAt: event.timestamp,
+  };
+
+  // Update tree
+  const newRoot = updateNodeInTree(state.root, passageId, updatedPassage);
+
+  // Update indexes
+  const newNodeIndex = { ...state.nodeIndex };
+  newNodeIndex[passageId] = { ...passageEntry, node: updatedPassage };
+
+  // Update interjection node in index
+  const interjectionIndex = newChildren.findIndex((c) => c.id === interjectionId);
+  if (interjectionIndex !== -1) {
+    newNodeIndex[interjectionId] = {
+      node: newChildren[interjectionIndex]!,
+      parentId: passageId,
+      path: [...passageEntry.path, passageId],
+    };
+  }
+
+  return {
+    ...state,
+    version: event.resultingVersion,
+    root: newRoot,
+    eventLog: [...state.eventLog, event],
+    nodeIndex: newNodeIndex,
+    lastModified: event.timestamp,
+    redoStack: [],
+  };
+}
+
+function applyPassageBoundaryChanged(
+  state: DocumentState,
+  event: PassageBoundaryChangedEvent
+): DocumentState {
+  const { passageId, newBoundaries, newContent } = event;
+
+  const passageEntry = state.nodeIndex[passageId];
+  if (!passageEntry || passageEntry.node.type !== 'passage') {
+    throw new Error(`Passage not found: ${passageId}`);
+  }
+
+  const passage = passageEntry.node as PassageNode;
+
+  // Update passage content by creating new text node(s)
+  const newTextNode: TextNode = {
+    id: passage.children.find(isTextNode)?.id ?? `node-${crypto.randomUUID()}`,
+    type: 'text',
+    version: 1,
+    updatedAt: event.timestamp,
+    content: newContent,
+  };
+
+  // Preserve interjection nodes but update children to have new text
+  const newChildren: (TextNode | InterjectionNode)[] = [newTextNode];
+
+  // Adjust interjection offsets based on boundary change
+  const boundaryShift = newBoundaries.startOffset - (passage.metadata.startOffset ?? 0);
+  const newInterjections: InterjectionMetadata[] = passage.metadata.interjections
+    .map((interj) => ({
+      ...interj,
+      offsetStart: interj.offsetStart - boundaryShift,
+      offsetEnd: interj.offsetEnd - boundaryShift,
+    }))
+    .filter((interj) => interj.offsetStart >= 0 && interj.offsetEnd <= newContent.length);
+
+  const updatedPassage: PassageNode = {
+    ...passage,
+    children: newChildren,
+    metadata: {
+      ...passage.metadata,
+      startOffset: newBoundaries.startOffset,
+      endOffset: newBoundaries.endOffset,
+      interjections: newInterjections,
+    },
+    version: passage.version + 1,
+    updatedAt: event.timestamp,
+  };
+
+  // Update tree
+  const newRoot = updateNodeInTree(state.root, passageId, updatedPassage);
+
+  // Update indexes
+  const newNodeIndex = { ...state.nodeIndex };
+  newNodeIndex[passageId] = { ...passageEntry, node: updatedPassage };
+
+  // Update text node in index
+  newNodeIndex[newTextNode.id] = {
+    node: newTextNode,
+    parentId: passageId,
+    path: [...passageEntry.path, passageId],
+  };
+
+  return {
+    ...state,
+    version: event.resultingVersion,
+    root: newRoot,
+    eventLog: [...state.eventLog, event],
+    nodeIndex: newNodeIndex,
+    lastModified: event.timestamp,
+    redoStack: [],
+  };
+}
+
+function applyParagraphsMergedForPassage(
+  state: DocumentState,
+  event: ParagraphsMergedForPassageEvent
+): DocumentState {
+  const { resultParagraphId, mergedParagraphIds, mergedParagraphs } = event;
+
+  // The first paragraph becomes the result, others are merged into it
+  const targetId = mergedParagraphIds[0];
+  if (!targetId) {
+    throw new Error('No paragraphs to merge');
+  }
+
+  const targetEntry = state.nodeIndex[targetId];
+  if (!targetEntry || targetEntry.node.type !== 'paragraph') {
+    throw new Error(`Target paragraph not found: ${targetId}`);
+  }
+
+  // Combine all children from all merged paragraphs
+  const combinedChildren: DocumentNode[] = [];
+  for (const para of mergedParagraphs) {
+    combinedChildren.push(...para.children);
+  }
+
+  // Create the merged paragraph with combined children
+  const mergedParagraph: ParagraphNode = {
+    id: resultParagraphId,
+    type: 'paragraph',
+    version: 1,
+    updatedAt: event.timestamp,
+    children: combinedChildren,
+  };
+
+  // Update tree: replace first paragraph with merged, remove others
+  let newRoot = updateNodeInTree(state.root, targetId, mergedParagraph);
+
+  // Remove all other merged paragraphs from tree
+  for (let i = 1; i < mergedParagraphIds.length; i++) {
+    const paraId = mergedParagraphIds[i];
+    if (!paraId) continue;
+    const paraEntry = state.nodeIndex[paraId];
+    if (paraEntry?.parentId) {
+      newRoot = removeNodeFromTree(newRoot, paraId, paraEntry.parentId);
+    }
+  }
+
+  // Rebuild node index
+  const newNodeIndex = { ...state.nodeIndex };
+
+  // Add merged paragraph
+  newNodeIndex[resultParagraphId] = {
+    node: mergedParagraph,
+    parentId: targetEntry.parentId,
+    path: targetEntry.path,
+  };
+
+  // Add children to index
+  combinedChildren.forEach((child) => {
+    newNodeIndex[child.id] = {
+      node: child,
+      parentId: resultParagraphId,
+      path: [...targetEntry.path, resultParagraphId],
+    };
+  });
+
+  // Remove old paragraph entries (except first which is replaced)
+  for (let i = 1; i < mergedParagraphIds.length; i++) {
+    const paraId = mergedParagraphIds[i];
+    if (paraId) {
+      delete newNodeIndex[paraId];
+    }
+  }
 
   return {
     ...state,

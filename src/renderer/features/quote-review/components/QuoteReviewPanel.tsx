@@ -58,14 +58,18 @@ export function QuoteReviewPanel({
     return { total, reviewed, percentage: total > 0 ? Math.round((reviewed / total) * 100) : 0 };
   }, [quotes]);
 
-  // Handle quote selection - also focus in editor
+  // Handle quote selection - also focus in editor AND enable boundary editing
   const handleSelectQuote = useCallback(
     (quoteId: string) => {
       setFocusedQuote(quoteId);
       // Focus the quote in the editor
       editorActions?.quoteActions.focusQuote(quoteId);
+      // Automatically enable boundary editing
+      enterBoundaryEditMode(quoteId);
+      // Also enable interjection editing mode
+      enterInterjectionEditMode(quoteId);
     },
-    [setFocusedQuote, editorActions]
+    [setFocusedQuote, editorActions, enterBoundaryEditMode, enterInterjectionEditMode]
   );
 
   // Handle verify toggle - update BOTH context and editor
@@ -95,28 +99,6 @@ export function QuoteReviewPanel({
     },
     [focusedQuoteId, updateQuote, editorActions]
   );
-
-  // Handle edit boundaries
-  const handleEditBoundaries = useCallback(() => {
-    if (focusedQuoteId) {
-      if (boundaryDrag.isDragging && boundaryDrag.quoteId === focusedQuoteId) {
-        endBoundaryDrag();
-      } else {
-        enterBoundaryEditMode(focusedQuoteId);
-        // Focus the quote in editor for visual feedback
-        editorActions?.quoteActions.focusQuote(focusedQuoteId);
-      }
-    }
-  }, [focusedQuoteId, boundaryDrag, endBoundaryDrag, enterBoundaryEditMode, editorActions]);
-
-  // Handle edit interjections
-  const handleEditInterjections = useCallback(() => {
-    if (focusedQuoteId) {
-      enterInterjectionEditMode(focusedQuoteId);
-      // Focus the quote in editor for visual feedback
-      editorActions?.quoteActions.focusQuote(focusedQuoteId);
-    }
-  }, [focusedQuoteId, enterInterjectionEditMode, editorActions]);
 
   // Handle delete quote - update BOTH context and editor
   const handleDelete = useCallback(() => {
@@ -149,32 +131,14 @@ export function QuoteReviewPanel({
     [onLookupVerse]
   );
 
-  // Handle Update Text
-  const handleUpdateText = useCallback(
-    (text: string) => {
-      if (focusedQuoteId) {
-        updateQuote(focusedQuoteId, { text });
-        editorActions?.quoteActions.updateQuoteText(focusedQuoteId, text);
-      }
-    },
-    [focusedQuoteId, updateQuote, editorActions]
-  );
-
-  // Handle Update Interjections
-  const handleUpdateInterjections = useCallback(
-    (interjections: string[]) => {
-      if (focusedQuoteId) {
-        updateQuote(focusedQuoteId, { interjections });
-        editorActions?.quoteActions.updateQuoteInterjections(focusedQuoteId, interjections);
-      }
-    },
-    [focusedQuoteId, updateQuote, editorActions]
-  );
-
   // Handle close detail view
   const handleCloseDetail = useCallback(() => {
     setFocusedQuote(null);
-  }, [setFocusedQuote]);
+    // Exit boundary editing when closing detail view
+    if (boundaryDrag.isDragging) {
+      endBoundaryDrag();
+    }
+  }, [setFocusedQuote, boundaryDrag.isDragging, endBoundaryDrag]);
 
   // Render empty state
   if (quotes.length === 0) {
@@ -245,17 +209,10 @@ export function QuoteReviewPanel({
               quote={focusedQuote}
               onReferenceChange={handleReferenceChange}
               onVerify={() => handleVerify(focusedQuote.id)}
-              onEditBoundaries={handleEditBoundaries}
-              onEditInterjections={handleEditInterjections}
               onDelete={handleDelete}
               onToggleNonBiblical={handleToggleNonBiblical}
               onLookupVerse={handleLookupVerse}
-              onUpdateText={handleUpdateText}
-              onUpdateInterjections={handleUpdateInterjections}
               onClose={handleCloseDetail}
-              isBoundaryEditing={
-                boundaryDrag.isDragging && boundaryDrag.quoteId === focusedQuote.id
-              }
             />
           </div>
         )}

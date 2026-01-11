@@ -3,9 +3,7 @@
  *
  * Wraps SermonEditor to add in-document quote editing features:
  * - Visual quote rendering with metadata
- * - Selection-based quote creation (SelectionAdder)
  * - Drag-based boundary editing (QuoteBoundaryEditor)
- * - Quote detail toolbar (FloatingEditBar)
  * - Right-click context menu
  *
  * AST-ONLY ARCHITECTURE:
@@ -17,8 +15,6 @@
 import React, { useCallback, useRef, useMemo, useState, useEffect } from 'react';
 import type { SermonDocument } from '../../../../types';
 import type { DocumentState, DocumentRootNode } from '../../../../../shared/documentModel';
-import { SelectionAdder } from '../../../quote-review/components/SelectionAdder';
-import { FloatingEditBar } from '../../../quote-review/components/FloatingEditBar';
 import { QuoteBoundaryEditor } from '../../../quote-review/components/QuoteBoundaryEditor';
 import { useQuoteReview, useEditorActionsOptional } from '../../../../contexts';
 import { SermonEditor } from './SermonEditor';
@@ -47,14 +43,12 @@ export function QuoteAwareSermonEditor({
   const quoteReview = useQuoteReview();
   const editorActions = useEditorActionsOptional();
   const editorContainerRef = useRef<HTMLDivElement>(null);
-  const [focusedQuoteId, setFocusedQuoteId] = useState<string | null>(null);
-  const [floatingBarPosition, setFloatingBarPosition] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; quoteId: string } | null>(
     null
   );
+
+  // Use focusedQuoteId from context instead of local state
+  const focusedQuoteId = quoteReview?.review.focusedQuoteId || null;
 
   // Get all quotes from documentState if available
   const quotes = useMemo(() => {
@@ -68,12 +62,12 @@ export function QuoteAwareSermonEditor({
     }> = [];
 
     function traverse(node: any): void {
-      if (node.type === 'bible_passage' && node.id) {
+      if (node.type === 'passage' && node.id) {
         const text = node.children?.map((child: any) => child.content || '').join('') || '';
         extractedQuotes.push({
           id: node.id,
           text,
-          reference: node.metadata?.reference?.displayReference,
+          reference: node.metadata?.reference?.normalizedReference,
           isVerified: node.metadata?.userVerified || false,
         });
       }
@@ -86,34 +80,6 @@ export function QuoteAwareSermonEditor({
     traverse(documentState.root);
     return extractedQuotes;
   }, [documentState]);
-
-  // Handle selection for quote creation
-  const handleCreateQuoteFromSelection = useCallback(
-    (selectedText: string, _range: Range) => {
-      if (!quoteReview) return;
-
-      // This would integrate with the quote creation flow
-      // For now, we'll just open the quote creation UI
-      quoteReview.startQuoteCreation(selectedText, null, []);
-    },
-    [quoteReview]
-  );
-
-  // Cast containerRef to HTMLElement for SelectionAdder compatibility
-  const containerRefAsHTMLElement = editorContainerRef as React.RefObject<HTMLElement>;
-
-  // Handle reference change for focused quote - update both context and editor
-  const handleReferenceChange = useCallback(
-    (reference: string) => {
-      if (focusedQuoteId) {
-        // Update context state
-        quoteReview?.updateQuote(focusedQuoteId, { reference });
-        // Update editor state
-        editorActions?.quoteActions.updateQuoteReference(focusedQuoteId, reference);
-      }
-    },
-    [focusedQuoteId, quoteReview, editorActions]
-  );
 
   // Handle verify toggle for focused quote - update both context and editor
   const handleVerifyQuote = useCallback(() => {
@@ -131,16 +97,7 @@ export function QuoteAwareSermonEditor({
     }
   }, [focusedQuoteId, quotes, quoteReview, editorActions]);
 
-  // Handle boundary editing
-  const handleEditBoundaries = useCallback(() => {
-    if (focusedQuoteId) {
-      quoteReview?.enterBoundaryEditMode(focusedQuoteId);
-      // Focus the quote in editor
-      editorActions?.quoteActions.focusQuote(focusedQuoteId);
-    }
-  }, [focusedQuoteId, quoteReview, editorActions]);
-
-  // Feature 2: Quote click detection and FloatingEditBar positioning
+  // Feature 2: Quote click detection for focus
   useEffect(() => {
     const container = editorContainerRef.current;
     if (!container) {
@@ -149,26 +106,16 @@ export function QuoteAwareSermonEditor({
 
     const handleQuoteClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      const biblePassage = target.closest('blockquote[data-quote-id]') as HTMLElement;
+      const biblePassage = target.closest('.bible-passage[data-node-id]') as HTMLElement;
 
-      if (biblePassage && editorContainerRef.current) {
-        const quoteId = biblePassage.getAttribute('data-quote-id');
+      if (biblePassage) {
+        const quoteId = biblePassage.getAttribute('data-node-id');
         if (quoteId) {
-          setFocusedQuoteId(quoteId);
-
-          // Calculate position for FloatingEditBar (above the quote)
-          const rect = biblePassage.getBoundingClientRect();
-          const containerRect = editorContainerRef.current.getBoundingClientRect();
-
-          setFloatingBarPosition({
-            top: rect.top - containerRect.top - 50, // 50px above quote
-            left: rect.left - containerRect.left + rect.width / 2,
-          });
+          quoteReview?.setFocusedQuote(quoteId);
         }
       } else {
         // Clicked outside quote - clear focus
-        setFocusedQuoteId(null);
-        setFloatingBarPosition(null);
+        quoteReview?.setFocusedQuote(null);
       }
     };
 
@@ -190,11 +137,11 @@ export function QuoteAwareSermonEditor({
 
     const handleContextMenu = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      const biblePassage = target.closest('blockquote[data-quote-id]') as HTMLElement;
+      const biblePassage = target.closest('.bible-passage[data-node-id]') as HTMLElement;
 
       if (biblePassage) {
         e.preventDefault();
-        const quoteId = biblePassage.getAttribute('data-quote-id');
+        const quoteId = biblePassage.getAttribute('data-node-id');
         if (quoteId) {
           setContextMenu({ x: e.clientX, y: e.clientY, quoteId });
         }
@@ -219,18 +166,6 @@ export function QuoteAwareSermonEditor({
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd+K (Mac) or Ctrl+K (Windows/Linux) - Create quote from selection
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        const selection = window.getSelection();
-        if (selection && !selection.isCollapsed) {
-          const selectedText = selection.toString().trim();
-          if (selectedText.length >= 10) {
-            handleCreateQuoteFromSelection(selectedText, selection.getRangeAt(0));
-          }
-        }
-      }
-
       // Delete - Remove focused quote (update both context and editor)
       if (e.key === 'Delete' && focusedQuoteId) {
         e.preventDefault();
@@ -238,14 +173,12 @@ export function QuoteAwareSermonEditor({
         editorActions?.quoteActions.deleteQuote(focusedQuoteId);
         // Then remove from context
         quoteReview?.removeQuote(focusedQuoteId);
-        setFocusedQuoteId(null);
-        setFloatingBarPosition(null);
+        quoteReview?.setFocusedQuote(null);
       }
 
       // Escape - Close panels and clear focus
       if (e.key === 'Escape') {
-        setFocusedQuoteId(null);
-        setFloatingBarPosition(null);
+        quoteReview?.setFocusedQuote(null);
         setContextMenu(null);
         if (quoteReview?.boundaryDrag.isDragging) {
           quoteReview.exitBoundaryEditMode();
@@ -263,19 +196,13 @@ export function QuoteAwareSermonEditor({
     return () => {
       window.document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [
-    focusedQuoteId,
-    quoteReview,
-    editorActions,
-    handleCreateQuoteFromSelection,
-    handleVerifyQuote,
-  ]);
+  }, [focusedQuoteId, quoteReview, editorActions, handleVerifyQuote]);
 
   // Handle context menu actions - update both context and editor
   const handleContextMenuAction = useCallback(
     (action: string, quoteId: string) => {
       setContextMenu(null);
-      setFocusedQuoteId(quoteId);
+      quoteReview?.setFocusedQuote(quoteId);
 
       switch (action) {
         case 'verify': {
@@ -294,7 +221,7 @@ export function QuoteAwareSermonEditor({
           editorActions?.quoteActions.deleteQuote(quoteId);
           // Then remove from context
           quoteReview?.removeQuote(quoteId);
-          setFocusedQuoteId(null);
+          quoteReview?.setFocusedQuote(null);
           break;
         case 'lookup':
           // Open verse lookup modal
@@ -318,23 +245,13 @@ export function QuoteAwareSermonEditor({
     <div ref={editorContainerRef} className="quote-aware-sermon-editor">
       <SermonEditor document={document} documentState={documentState} onAstChange={onAstChange} />
 
-      {/* Selection-based quote creation */}
-      {documentState && editorContainerRef.current && (
-        <SelectionAdder
-          containerRef={containerRefAsHTMLElement}
-          onCreateQuote={handleCreateQuoteFromSelection}
-          isReviewModeActive={quoteReview?.review.isReviewModeActive ?? false}
-          minSelectionLength={10}
-        />
-      )}
-
       {/* Feature 3: Boundary editing for focused quote */}
       {focusedQuoteId &&
         quoteReview?.boundaryEdit.isActive &&
         (() => {
           // Find the quote element in the DOM
           const quoteElement = editorContainerRef.current?.querySelector(
-            `blockquote[data-quote-id="${focusedQuoteId}"]`
+            `.bible-passage[data-node-id="${focusedQuoteId}"]`
           ) as HTMLElement | null;
           const quoteData = quotes.find((q) => q.id === focusedQuoteId);
 
@@ -363,35 +280,6 @@ export function QuoteAwareSermonEditor({
             />
           );
         })()}
-
-      {/* Feature 2: Floating toolbar for focused quote */}
-      {focusedQuoteId && floatingBarPosition && (
-        <FloatingEditBar
-          reference={quotes.find((q) => q.id === focusedQuoteId)?.reference || ''}
-          isVerified={quotes.find((q) => q.id === focusedQuoteId)?.isVerified || false}
-          isBoundaryEditActive={
-            quoteReview?.boundaryDrag.isDragging &&
-            quoteReview.boundaryDrag.quoteId === focusedQuoteId
-          }
-          isNonBiblical={false}
-          position={floatingBarPosition}
-          onReferenceChange={handleReferenceChange}
-          onVerify={handleVerifyQuote}
-          onEditBounds={handleEditBoundaries}
-          onDelete={() => {
-            quoteReview?.removeQuote(focusedQuoteId);
-            setFocusedQuoteId(null);
-            setFloatingBarPosition(null);
-          }}
-          onEditInterjections={() => quoteReview?.enterInterjectionEditMode(focusedQuoteId)}
-          onToggleNonBiblical={() => {
-            // Toggle non-biblical status
-          }}
-          onLookupVerse={() => {
-            // Open verse lookup
-          }}
-        />
-      )}
 
       {/* Feature 4: Context menu for quotes */}
       {contextMenu && (

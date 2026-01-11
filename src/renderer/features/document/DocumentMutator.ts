@@ -41,6 +41,9 @@ import {
   createPassageVerifiedEvent,
   createInterjectionAddedEvent,
   createInterjectionRemovedEvent,
+  createInterjectionBoundaryChangedEvent,
+  createPassageBoundaryChangedEvent,
+  createParagraphsMergedForPassageEvent,
   createParagraphSplitEvent,
   createParagraphMergedEvent,
   createDocumentMetadataUpdatedEvent,
@@ -839,6 +842,145 @@ export class DocumentMutator {
     );
 
     return this.applyAndNotify(event);
+  }
+
+  // ============================================================================
+  // BOUNDARY MUTATIONS
+  // ============================================================================
+
+  /**
+   * Change the boundaries of a passage (Bible passage).
+   * This updates the start/end offsets and recalculates content.
+   * If the boundary change crosses paragraphs, it will merge them.
+   */
+  changePassageBoundary(
+    passageId: NodeId,
+    options: {
+      newStartOffset: number;
+      newEndOffset: number;
+      newContent: string;
+      paragraphsToMerge?: NodeId[];
+    },
+    source: EventSource = 'user'
+  ): MutationResult {
+    const passageEntry = this.state.nodeIndex[passageId];
+    if (!passageEntry || passageEntry.node.type !== 'passage') {
+      return {
+        success: false,
+        events: [],
+        error: `Passage not found: ${passageId}`,
+        state: this.state,
+      };
+    }
+
+    const passage = passageEntry.node as PassageNode;
+    const previousStartOffset = passage.metadata.startOffset ?? 0;
+    const previousEndOffset = passage.metadata.endOffset ?? 0;
+    const previousContent = this.extractPassageText(passage);
+
+    // If paragraphs need to be merged, do that first
+    if (options.paragraphsToMerge && options.paragraphsToMerge.length > 1) {
+      // Get paragraph snapshots for undo
+      const mergedParagraphs: ParagraphNode[] = options.paragraphsToMerge
+        .map((id) => this.state.nodeIndex[id]?.node)
+        .filter((node): node is ParagraphNode => node?.type === 'paragraph');
+
+      const resultParagraphId = options.paragraphsToMerge[0]!;
+
+      // Create merge event
+      const mergeEvent = createParagraphsMergedForPassageEvent(
+        resultParagraphId,
+        options.paragraphsToMerge,
+        mergedParagraphs,
+        passageId,
+        this.state.version + 1,
+        source
+      );
+
+      // Apply merge first
+      const mergeResult = this.applyAndNotify(mergeEvent);
+      if (!mergeResult.success) {
+        return mergeResult;
+      }
+    }
+
+    // Create boundary change event
+    const event = createPassageBoundaryChangedEvent(
+      passageId,
+      { startOffset: previousStartOffset, endOffset: previousEndOffset },
+      { startOffset: options.newStartOffset, endOffset: options.newEndOffset },
+      previousContent,
+      options.newContent,
+      options.paragraphsToMerge,
+      undefined, // Paragraph snapshots already captured in merge event
+      this.state.version + 1,
+      source
+    );
+
+    return this.applyAndNotify(event);
+  }
+
+  /**
+   * Change the boundaries of an interjection within a passage.
+   */
+  changeInterjectionBoundary(
+    passageId: NodeId,
+    interjectionId: NodeId,
+    newOffsetStart: number,
+    newOffsetEnd: number,
+    newText: string,
+    source: EventSource = 'user'
+  ): MutationResult {
+    const passageEntry = this.state.nodeIndex[passageId];
+    if (!passageEntry || passageEntry.node.type !== 'passage') {
+      return {
+        success: false,
+        events: [],
+        error: `Passage not found: ${passageId}`,
+        state: this.state,
+      };
+    }
+
+    const passage = passageEntry.node as PassageNode;
+    const interjection = passage.metadata.interjections.find((i) => i.id === interjectionId);
+
+    if (!interjection) {
+      return {
+        success: false,
+        events: [],
+        error: `Interjection not found: ${interjectionId}`,
+        state: this.state,
+      };
+    }
+
+    const previousBoundaries = {
+      offsetStart: interjection.offsetStart,
+      offsetEnd: interjection.offsetEnd,
+    };
+    const previousText = interjection.text;
+
+    const event = createInterjectionBoundaryChangedEvent(
+      passageId,
+      interjectionId,
+      previousBoundaries,
+      { offsetStart: newOffsetStart, offsetEnd: newOffsetEnd },
+      previousText,
+      newText,
+      this.state.version + 1,
+      source
+    );
+
+    return this.applyAndNotify(event);
+  }
+
+  /**
+   * Extract text content from a passage.
+   */
+  private extractPassageText(passage: PassageNode): string {
+    return passage.children
+      .filter(isTextNode)
+      .map((t) => t.content)
+      .join('');
   }
 
   // ============================================================================

@@ -66,7 +66,7 @@ declare module '@tiptap/core' {
  *
  * Renders as a blockquote with data attributes for metadata preservation.
  * Metadata is stored in node.attrs and used by interactive overlays
- * (SelectionAdder, QuoteBoundaryEditor, FloatingEditBar).
+ * (QuoteBoundaryEditor).
  */
 export const BiblePassageExtension = TipTapNode.create({
   name: 'bible_passage',
@@ -101,7 +101,7 @@ export const BiblePassageExtension = TipTapNode.create({
     return {
       nodeId: {
         default: null,
-        parseHTML: (element) => element.getAttribute('data-node-id') || element.getAttribute('data-quote-id'),
+        parseHTML: (element) => element.getAttribute('data-node-id') || element.getAttribute('data-passage-id') || element.getAttribute('data-quote-id'),
         renderHTML: (attrs) => {
           if (!attrs.nodeId) return {};
           return {
@@ -294,6 +294,10 @@ export const BiblePassageExtension = TipTapNode.create({
         preserveAttributes: true,
       },
       {
+        tag: 'div[data-passage-id]',
+        preserveAttributes: true,
+      },
+      {
         tag: 'div[data-quote-id]',
         preserveAttributes: true,
       },
@@ -303,6 +307,10 @@ export const BiblePassageExtension = TipTapNode.create({
       },
       {
         tag: 'blockquote[data-node-id]',
+        preserveAttributes: true,
+      },
+      {
+        tag: 'blockquote[data-passage-id]',
         preserveAttributes: true,
       },
       {
@@ -321,6 +329,7 @@ export const BiblePassageExtension = TipTapNode.create({
           // Skip if it has our quote-specific attributes
           if (
             el.hasAttribute('data-node-id') ||
+            el.hasAttribute('data-passage-id') ||
             el.hasAttribute('data-quote-id') ||
             el.hasAttribute('data-reference')
           ) {
