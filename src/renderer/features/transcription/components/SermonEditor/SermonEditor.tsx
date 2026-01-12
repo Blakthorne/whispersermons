@@ -31,6 +31,8 @@ export interface SermonEditorProps {
   documentState?: DocumentState;
   /** Callback when AST changes (debounced) - replaces onHtmlChange */
   onAstChange?: (newRoot: DocumentRootNode) => void;
+  /** Timestamp to force a content reload from documentState (for external mutations) */
+  externalUpdateTrigger?: number;
 }
 
 /**
@@ -49,6 +51,7 @@ function SermonEditor({
   document,
   documentState,
   onAstChange,
+  externalUpdateTrigger,
 }: SermonEditorProps): React.JSX.Element {
   const { visibleNodeId, setVisibleNodeId, externalAstVersion, sermonDocument } =
     useAppTranscription();
@@ -285,7 +288,11 @@ function SermonEditor({
   // recreated on each render even when it represents the same document
   const lastRootIdRef = useRef<string | null>(null);
 
+  // Track last external update trigger to detect changes
+  const lastExternalTriggerRef = useRef<number | undefined>(undefined);
+
   // Update content when DOCUMENT IDENTITY changes (switching to different sermon)
+  // OR when explicitly triggered by external mutation (externalUpdateTrigger)
   // NOTE: We compare document ROOT ID to detect actual document switches.
   // Internal edits flow TipTap → AST → context, but should NOT trigger
   // content replacement (that would cause infinite loops and lost state).
@@ -294,8 +301,14 @@ function SermonEditor({
     const currentRootId = documentState?.root?.id || null;
     const isNewDocument = currentRootId !== lastRootIdRef.current && currentRootId !== null;
 
-    if (editor && document && documentState?.root && isNewDocument) {
+    // Check for explicit external trigger
+    const isExternalUpdate = externalUpdateTrigger !== lastExternalTriggerRef.current;
+
+    if (editor && document && documentState?.root && (isNewDocument || isExternalUpdate)) {
       lastRootIdRef.current = currentRootId;
+      if (externalUpdateTrigger) {
+        lastExternalTriggerRef.current = externalUpdateTrigger;
+      }
 
       // Set the flag to prevent onUpdate from triggering onAstChange
       isSyncingFromAstRef.current = true;

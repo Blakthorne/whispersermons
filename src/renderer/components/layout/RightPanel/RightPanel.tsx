@@ -17,6 +17,7 @@ import type { QuoteReviewItem } from '../../../types/quoteReview';
 import type { SermonDocument } from '../../../types';
 import type { DocumentRootNode } from '../../../../shared/documentModel';
 import { DevASTPanel } from '../../../features/dev/components/DevASTPanel/DevASTPanel';
+import { DocumentProvider } from '../../../features/document';
 import { DocumentMetadataPanel } from '../../../features/document/components';
 import { UnifiedEditorActions, type EditorMode } from './UnifiedEditorActions';
 import './RightPanel.css';
@@ -525,22 +526,24 @@ function RightPanel(): React.JSX.Element {
   if (sermonDocument && documentId) {
     return (
       <EditorActionsProvider>
-        <QuoteReviewProvider documentId={documentId}>
-          <RightPanelWithQuoteReview document={sermonDocument} key={documentId}>
-            <SermonEditorLayout
-              sermonDocument={sermonDocument}
-              documentSaveState={documentSaveState}
-              lastSavedAt={lastSavedAt}
-              handleAstChange={handleAstChange}
-              handleMetadataChange={handleMetadataChange}
-              activeMode={activeMode}
-              setActiveMode={setActiveMode}
-              isDev={isDev}
-              wordCount={wordCount}
-              quoteCount={quoteCount}
-            />
-          </RightPanelWithQuoteReview>
-        </QuoteReviewProvider>
+        <DocumentProvider sermonDocument={sermonDocument}>
+          <QuoteReviewProvider documentId={documentId}>
+            <RightPanelWithQuoteReview document={sermonDocument} key={documentId}>
+              <SermonEditorLayout
+                sermonDocument={sermonDocument}
+                documentSaveState={documentSaveState}
+                lastSavedAt={lastSavedAt}
+                handleAstChange={handleAstChange}
+                handleMetadataChange={handleMetadataChange}
+                activeMode={activeMode}
+                setActiveMode={setActiveMode}
+                isDev={isDev}
+                wordCount={wordCount}
+                quoteCount={quoteCount}
+              />
+            </RightPanelWithQuoteReview>
+          </QuoteReviewProvider>
+        </DocumentProvider>
       </EditorActionsProvider>
     );
   }

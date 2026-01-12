@@ -37,11 +37,11 @@ export interface BiblePassageRendererProps {
 function getConfidenceClass(level: ConfidenceLevel): string {
   switch (level) {
     case 'high':
-      return 'document-quote-block--high-confidence';
+      return 'document-bible-passage--high-confidence';
     case 'medium':
-      return 'document-quote-block--medium-confidence';
+      return 'document-bible-passage--medium-confidence';
     case 'low':
-      return 'document-quote-block--low-confidence';
+      return 'document-bible-passage--low-confidence';
     default:
       return '';
   }
@@ -60,12 +60,12 @@ export function BiblePassageRenderer({
   const { detection, userVerified } = metadata;
 
   // Build class names
-  const classNames = ['document-quote-block'];
+  const classNames = ['document-bible-passage'];
   if (showConfidence && detection?.confidenceLevel) {
     classNames.push(getConfidenceClass(detection.confidenceLevel));
   }
   if (showVerification && userVerified) {
-    classNames.push('document-quote-block--verified');
+    classNames.push('document-bible-passage--verified');
   }
   if (className) {
     classNames.push(className);

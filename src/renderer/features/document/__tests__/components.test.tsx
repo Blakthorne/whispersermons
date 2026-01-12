@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { DocumentProvider } from '../DocumentContext';
 import { DocumentRenderer } from '../components/DocumentRenderer';
 import { TextRenderer } from '../components/TextRenderer';
@@ -291,31 +291,31 @@ describe('BiblePassageRenderer', () => {
     );
     const { container } = render(<BiblePassageRenderer node={passage} />);
 
-    const passageDiv = container.querySelector('.document-quote-block');
-    expect(passageDiv).toHaveClass('document-quote-block--high-confidence');
+    const passageDiv = container.querySelector('.document-bible-passage');
+    expect(passageDiv).toHaveClass('document-bible-passage--high-confidence');
   });
 
   it('should apply medium confidence class', () => {
     const passage = createPassageNode('passage-1', 'Text', 'John 3:16', 'John', 0.7);
     const { container } = render(<BiblePassageRenderer node={passage} />);
 
-    const passageDiv = container.querySelector('.document-quote-block');
-    expect(passageDiv).toHaveClass('document-quote-block--medium-confidence');
+    const passageDiv = container.querySelector('.document-bible-passage');
+    expect(passageDiv).toHaveClass('document-bible-passage--medium-confidence');
   });
 
   it('should apply low confidence class', () => {
     const passage = createPassageNode('passage-1', 'Text', 'John 3:16', 'John', 0.5);
     const { container } = render(<BiblePassageRenderer node={passage} />);
 
-    const passageDiv = container.querySelector('.document-quote-block');
-    expect(passageDiv).toHaveClass('document-quote-block--low-confidence');
+    const passageDiv = container.querySelector('.document-bible-passage');
+    expect(passageDiv).toHaveClass('document-bible-passage--low-confidence');
   });
 
   it('should have data attributes', () => {
     const passage = createPassageNode('passage-1', 'Text', 'John 3:16', 'John', 0.85);
     const { container } = render(<BiblePassageRenderer node={passage} />);
 
-    const passageDiv = container.querySelector('.document-quote-block');
+    const passageDiv = container.querySelector('.document-bible-passage');
     expect(passageDiv).toHaveAttribute('data-node-id', 'passage-1');
     expect(passageDiv).toHaveAttribute('data-confidence', '0.85');
   });

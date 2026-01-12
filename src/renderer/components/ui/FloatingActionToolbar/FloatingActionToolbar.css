@@ -1,0 +1,55 @@
+.floating-action-toolbar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  /* Make overlay transparent but blocking clicks unless needed */
+  pointer-events: none;
+}
+
+.floating-action-toolbar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 2rem;
+  z-index: 9999;
+  
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  
+  background-color: var(--color-surface-elevated, #2a2a2a);
+  border: 1px solid var(--color-border, #3a3a3a);
+  border-radius: 9999px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  
+  /* Animation */
+  animation: slide-up 0.2s ease-out;
+  pointer-events: auto;
+}
+
+.floating-action-toolbar__divider {
+  width: 1px;
+  height: 24px;
+  background-color: var(--color-border, #3a3a3a);
+  margin: 0 0.25rem;
+}
+
+.floating-action-toolbar__hint {
+  margin-left: 0.5rem;
+  margin-right: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #a3a3a3);
+  font-weight: 500;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}

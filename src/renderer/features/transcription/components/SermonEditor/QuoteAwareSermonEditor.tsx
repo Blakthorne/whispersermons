@@ -17,6 +17,7 @@ import type { SermonDocument } from '../../../../types';
 import type { DocumentState, DocumentRootNode } from '../../../../../shared/documentModel';
 import { QuoteBoundaryEditor } from '../../../quote-review/components/QuoteBoundaryEditor';
 import { useQuoteReview, useEditorActionsOptional } from '../../../../contexts';
+import { useDocumentMutations } from '../../../document/hooks/useDocumentMutations';
 import { SermonEditor } from './SermonEditor';
 import './QuoteAwareSermonEditor.css';
 
@@ -42,10 +43,14 @@ export function QuoteAwareSermonEditor({
 }: QuoteAwareSermonEditorProps): React.JSX.Element {
   const quoteReview = useQuoteReview();
   const editorActions = useEditorActionsOptional();
+  const mutations = useDocumentMutations();
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; quoteId: string } | null>(
     null
   );
+
+  // State to force editor refresh after structural mutations
+  const [mutationTrigger, setMutationTrigger] = useState<number>(0);
 
   // Use focusedQuoteId from context instead of local state
   const focusedQuoteId = quoteReview?.review.focusedQuoteId || null;
@@ -97,7 +102,14 @@ export function QuoteAwareSermonEditor({
     }
   }, [focusedQuoteId, quotes, quoteReview, editorActions]);
 
-  // Feature 2: Quote click detection for focus
+  // Feature 2a: Sync context focus to Editor focus (visual highlight)
+  useEffect(() => {
+    if (focusedQuoteId && editorActions) {
+      editorActions.quoteActions.focusQuote(focusedQuoteId);
+    }
+  }, [focusedQuoteId, editorActions, mutationTrigger]);
+
+  // Feature 2b: Quote click detection for focus
   useEffect(() => {
     const container = editorContainerRef.current;
     if (!container) {
@@ -243,7 +255,12 @@ export function QuoteAwareSermonEditor({
   // Render base SermonEditor with quote features overlay
   return (
     <div ref={editorContainerRef} className="quote-aware-sermon-editor">
-      <SermonEditor document={document} documentState={documentState} onAstChange={onAstChange} />
+      <SermonEditor
+        document={document}
+        documentState={documentState}
+        onAstChange={onAstChange}
+        externalUpdateTrigger={mutationTrigger}
+      />
 
       {/* Feature 3: Boundary editing for focused quote */}
       {focusedQuoteId &&
@@ -262,9 +279,37 @@ export function QuoteAwareSermonEditor({
               quoteElement={quoteElement}
               quoteText={quoteData.text}
               isActive={quoteReview.boundaryEdit.isActive}
-              onBoundaryChange={(_newText, startOffset, endOffset) => {
-                // Update the quote boundaries through the context
-                quoteReview.updateBoundaryPreview(startOffset, endOffset);
+              onBoundaryChange={(newText, startOffset, endOffset, paragraphIds) => {
+                if (mutations.canMutate) {
+                  // Log exact params for debugging
+                  console.log('[QuoteAwareSermonEditor] Confirm boundary change:', {
+                    quoteId: focusedQuoteId,
+                    startOffset,
+                    endOffset,
+                    newTextPreview: newText.substring(0, 20) + '...',
+                    paragraphIds,
+                  });
+
+                  const result = mutations.changePassageBoundary(focusedQuoteId, {
+                    newStartOffset: startOffset,
+                    newEndOffset: endOffset,
+                    newContent: newText,
+                    paragraphsToMerge: paragraphIds, // Pass the paragraph IDs to merge
+                  });
+
+                  // Log result
+                  console.log('[QuoteAwareSermonEditor] Mutation Result:', result);
+
+                  // If successful, we must update the AST and force a refresh of the editor
+                  // because this is a structural change that TipTap/SermonEditor would otherwise ignore
+                  // (since it normally ignores external updates to same root ID to prevent loops)
+                  if (result?.success && result.state && onAstChange) {
+                    onAstChange(result.state.root);
+                    setMutationTrigger(Date.now());
+                  }
+                } else {
+                  console.warn('[QuoteAwareSermonEditor] Cannot mutate: mutator not available');
+                }
               }}
               onEditStart={() => {
                 quoteReview.startBoundaryDrag(focusedQuoteId, 'start', 0);
@@ -274,8 +319,7 @@ export function QuoteAwareSermonEditor({
                 quoteReview.exitBoundaryEditMode();
               }}
               onCrossParagraphDrag={(direction, targetParagraph) => {
-                // Handle cross-paragraph drag - could merge paragraphs
-                console.log('Cross-paragraph drag:', direction, targetParagraph);
+                // Update drag preview state if needed (optional)
               }}
             />
           );

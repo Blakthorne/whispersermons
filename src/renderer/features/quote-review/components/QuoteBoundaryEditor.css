@@ -14,86 +14,101 @@
   outline: none;
 }
 
-/* Boundary handles */
+/* Boundary handles - container acts as invisible hitbox */
 .boundary-handle {
   position: absolute;
-  width: 16px;
-  height: 28px;
+  width: 24px; /* Generous hit area for easy grabbing */
   cursor: col-resize;
   pointer-events: auto;
   z-index: 9991; /* Slightly higher than container */
-  transition: transform var(--transition-fast);
-}
-
-.boundary-handle:hover {
-  transform: scale(1.1);
-}
-
-.boundary-handle.dragging {
-  transform: scale(1.2);
-}
-
-.boundary-handle-grip {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 2px;
-  width: 100%;
-  height: 100%;
+  /* Use pointer-events to only grab handle, but here we want the whole box */
+}
+
+/* The visible cursor line that sits ON the text caret position */
+.boundary-cursor-line {
+  width: 2px;
+  background-color: var(--accent);
+  height: 100%; /* Matches line-height passed from JS */
+  border-radius: 1px;
+  /* Ensure it's centered in the 24px container */
+  position: relative;
+}
+
+/* The grip handle (lollipop) that hangs BELOW the text */
+.boundary-handle-grip {
+  position: absolute; /* Position relative to handle container */
+  top: 100%; /* Push completely below the text line */
+  left: 50%; /* Center horizontally */
+  transform: translateX(-50%); /* Center point correction */
+  
+  width: 12px;
+  height: 12px;
   background: var(--accent);
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transition: background var(--transition-fast);
+  border-radius: 50%; /* Perfect circle */
+  
+  margin-top: 2px; /* Small gap from the text line */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform var(--transition-fast), background var(--transition-fast);
+  z-index: 9992;
 }
 
 .boundary-handle:hover .boundary-handle-grip {
   background: var(--accent-hover);
+  transform: translateX(-50%) scale(1.2);
 }
 
 .boundary-handle.dragging .boundary-handle-grip {
   background: var(--accent-hover);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  transform: translateX(-50%) scale(1.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
-.boundary-handle-line {
-  width: 2px;
-  height: 8px;
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: 1px;
-}
-
-/* Start handle - vertical lines indicating left direction */
+/* Start handle specific - Grip shape modification if needed */
 .boundary-handle-start .boundary-handle-grip {
-  border-top-left-radius: 8px;
-  border-bottom-left-radius: 8px;
+  /* Point to the right (bracket logic) or keep generic teardrop */
+  /* Keeping generic teardrop for now, simple and effective */
 }
 
-/* End handle - vertical lines indicating right direction */
 .boundary-handle-end .boundary-handle-grip {
-  border-top-right-radius: 8px;
-  border-bottom-right-radius: 8px;
+  /* Point to the left */
 }
 
-/* Highlight overlay around the quote */
+/* Highlight overlay - text selection style instead of border */
 .boundary-highlight {
-  position: absolute;
-  border: 2px dashed var(--accent);
-  border-radius: var(--radius-sm);
-  background: rgba(var(--accent-rgb), 0.05);
+  position: fixed; /* Fixed position for portal rendering */
+  border-radius: 3px;
+  background: rgba(59, 130, 246, 0.25); /* Blue highlight matching handles */
   pointer-events: none;
-  animation: boundaryPulse 2s ease-in-out infinite;
+  /* Remove the border and animation - just use solid highlight */
 }
 
-@keyframes boundaryPulse {
-  0%, 100% {
-    border-color: var(--accent);
-    background: rgba(var(--accent-rgb), 0.05);
-  }
-  50% {
-    border-color: var(--accent-hover);
-    background: rgba(var(--accent-rgb), 0.1);
-  }
+/* Text-flow highlight - one rectangle per line */
+.boundary-highlight-line {
+  position: fixed;
+  border-radius: 2px;
+  background: rgba(59, 130, 246, 0.25);
+  pointer-events: none;
+  transition: background 0.15s ease;
+}
+
+/* First and last line highlights have rounded corners on their respective ends */
+.boundary-highlight-line:first-child {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.boundary-highlight-line:last-child {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+/* When dragging, make highlight more visible */
+.quote-boundary-editor.dragging .boundary-highlight,
+.quote-boundary-editor.dragging .boundary-highlight-line {
+  background: rgba(59, 130, 246, 0.35);
 }
 
 /* Instructions tooltip */
