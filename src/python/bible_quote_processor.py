@@ -1664,20 +1664,92 @@ def extend_quote_past_interjection(transcript: str, current_end: int, verse_text
     return best_extension
 
 
-def find_quote_boundaries_improved(verse_text: str, transcript: str, ref_position: int, 
-                                   ref_length: int = 0) -> Optional[Tuple[int, int, float]]:
+# ============================================================================
+# INTRODUCTORY PHRASE DETECTION
+# ============================================================================
+
+# Common patterns that introduce Bible quotes after the reference
+# These patterns appear BETWEEN the verse reference and the actual quoted text
+INTRO_PHRASE_PATTERNS = [
+    # Attribution patterns (e.g., "says", "writes", "tells us")
+    r'(?:says?|writes?|tells?\s+us|teaches?|declares?|proclaims?|records?|states?|reads?)\s+',
+    # Author attribution (e.g., "Paul writes", "Jesus says", "David said")
+    r'(?:Paul|Jesus|David|Moses|Peter|John|James|Solomon|Isaiah|Jeremiah)\s+(?:says?|writes?|wrote|said|tells?\s+us)\s+',
+    # Continuation patterns (e.g., "he says", "it says", "the Bible says")
+    r'(?:he|she|it|the\s+(?:Bible|Scripture|Word|Lord|Apostle))\s+(?:says?|tells?\s+us|writes?)\s+',
+    # Quote markers
+    r'(?:quote|and\s+I\s+quote)\s*[,:]?\s*',
+    # Verse reading patterns
+    r'(?:let(?:\'s)?\s+read|it\s+reads?)\s*[,:]?\s*',
+]
+
+# Combined pattern for all intro phrases
+INTRO_PHRASE_COMBINED = '|'.join(INTRO_PHRASE_PATTERNS)
+
+
+def extract_reference_intro_length(transcript: str, ref_position: int, ref_length: int, 
+                                    max_intro_length: int = 100) -> int:
     """
-    Improved quote boundary detection using distinctive phrase matching.
+    Calculate how much text to skip past the reference to reach the quoted text.
+    
+    This handles cases where speakers use introductory phrases after the reference:
+    - "Romans 12:1 says..." (skip past "says ")
+    - "Paul writes in Romans 12:1..." (the intro comes BEFORE the reference)
+    - "Romans 12 one says Paul writes I beseech you..." (skip past "says Paul writes ")
+    
+    Args:
+        transcript: The full transcript text
+        ref_position: Position where the reference starts in the transcript
+        ref_length: Length of the reference text itself
+        max_intro_length: Maximum characters to search for intro phrases (default 100)
+    
+    Returns:
+        Total length to skip (ref_length + intro phrase length)
+    """
+    # Start searching immediately after the reference
+    search_start = ref_position + ref_length
+    search_end = min(search_start + max_intro_length, len(transcript))
+    
+    if search_start >= len(transcript):
+        return ref_length
+    
+    # Text immediately following the reference
+    after_ref = transcript[search_start:search_end]
+    
+    # Try to match intro patterns at the start of this text
+    intro_pattern = re.compile(
+        r'^[\s,]*(?:' + INTRO_PHRASE_COMBINED + r')',
+        re.IGNORECASE
+    )
+    
+    match = intro_pattern.match(after_ref)
+    if match:
+        intro_length = match.end()
+        return ref_length + intro_length
+    
+    return ref_length
+
+
+def find_quote_boundaries_improved(verse_text: str, transcript: str, ref_position: int, 
+                                   ref_length: int = 0, debug: bool = False) -> Optional[Tuple[int, int, float]]:
+    """
+    Improved quote boundary detection using bidirectional distinctive phrase matching.
     
     This method extracts distinctive phrases from the Bible verse and searches
-    for them in the transcript. It then uses the matched phrases to determine
-    the quote boundaries.
+    for them in the transcript BOTH before and after the reference position.
+    This handles the common pattern where a speaker mentions a verse reference
+    and then immediately quotes it: "Romans 12:1 says I beseech you..."
+    
+    The algorithm prioritizes forward matches (after the reference) since that's
+    the most common sermon pattern, but falls back to backward matches when needed.
     
     Args:
         verse_text: The actual Bible verse text from API
         transcript: The sermon transcript
         ref_position: Position of the reference in the transcript
         ref_length: Length of the reference text to skip past (e.g., "Matthew 6:33" = 12 chars)
+                   This is automatically extended to include any detected intro phrases.
+        debug: Whether to output debug logging for boundary detection decisions
     
     Returns:
         Tuple of (start_pos, end_pos, confidence) or None
@@ -1685,33 +1757,139 @@ def find_quote_boundaries_improved(verse_text: str, transcript: str, ref_positio
     verse_words = get_words(verse_text)
     
     if len(verse_words) < 4:
+        if debug:
+            print(f"  [DEBUG] Verse too short ({len(verse_words)} words), skipping")
         return None
     
-    # Search area: skip past the reference text, then search up to ~6000 chars ahead
-    # This prevents matching verse numbers as part of the quote (e.g., "33" in "Matthew 6:33")
-    search_start = ref_position + ref_length if ref_length > 0 else ref_position
-    search_end = min(ref_position + 6000, len(transcript))
+    # Extend ref_length to include any introductory phrases (e.g., "says", "Paul writes")
+    effective_ref_length = extract_reference_intro_length(transcript, ref_position, ref_length)
+    
+    if debug and effective_ref_length > ref_length:
+        intro_text = transcript[ref_position + ref_length:ref_position + effective_ref_length]
+        print(f"  [DEBUG] Detected intro phrase: '{intro_text.strip()}'")
+    
+    # =========================================================================
+    # BIDIRECTIONAL SEARCH: Search both FORWARD and BACKWARD from reference
+    # =========================================================================
+    
+    # Forward search region: starts after reference+intro, extends ~6000 chars
+    forward_search_start = ref_position + effective_ref_length
+    forward_search_end = min(ref_position + 6000, len(transcript))
+    
+    # Backward search region: starts ~500 chars BEFORE reference
+    backward_search_distance = 500
+    backward_search_start = max(0, ref_position - backward_search_distance)
+    backward_search_end = ref_position  # Don't include the reference itself
+    
+    if debug:
+        print(f"  [DEBUG] Reference position: {ref_position}, ref_length: {ref_length}, effective: {effective_ref_length}")
+        print(f"  [DEBUG] Forward search: [{forward_search_start}, {forward_search_end}]")
+        print(f"  [DEBUG] Backward search: [{backward_search_start}, {backward_search_end}]")
+        # Show snippets of the search regions
+        forward_snippet = transcript[forward_search_start:forward_search_start + 150].replace('\n', ' ')
+        print(f"  [DEBUG] Forward region starts: '{forward_snippet}...'")
+        if backward_search_start < backward_search_end:
+            backward_snippet = transcript[max(backward_search_end - 150, backward_search_start):backward_search_end].replace('\n', ' ')
+            print(f"  [DEBUG] Backward region ends: '...{backward_snippet}'")
     
     # Extract distinctive phrases from the verse
     phrases = find_distinctive_phrases(verse_text)
     
     if not phrases:
+        if debug:
+            print(f"  [DEBUG] No distinctive phrases found in verse")
         return None
     
-    # Find all phrase matches
-    all_matches = []
+    if debug:
+        print(f"  [DEBUG] Extracted {len(phrases)} distinctive phrases from verse")
+    
+    # =========================================================================
+    # FORWARD SEARCH: Look for phrase matches AFTER the reference
+    # =========================================================================
+    forward_matches = []
     for phrase_idx, phrase in enumerate(phrases):
-        result = find_best_phrase_match([phrase], transcript, search_start, search_end)
+        result = find_best_phrase_match([phrase], transcript, forward_search_start, forward_search_end)
         if result:
-            # Replace returned phrase_idx (always 0 since we pass [phrase]) with actual phrase_idx
             start, end, score, _ = result
-            all_matches.append((start, end, score, phrase_idx))
+            forward_matches.append((start, end, score, phrase_idx, 'forward'))
+            if debug:
+                matched_text = transcript[start:end]
+                print(f"  [DEBUG] Forward match [{phrase_idx}]: '{matched_text}' at {start}-{end} (score: {score:.2f})")
+    
+    # =========================================================================
+    # BACKWARD SEARCH: Look for phrase matches BEFORE the reference
+    # (Only search if there's a meaningful backward region)
+    # =========================================================================
+    backward_matches = []
+    if backward_search_end > backward_search_start + 10:  # At least 10 chars to search
+        for phrase_idx, phrase in enumerate(phrases):
+            result = find_best_phrase_match([phrase], transcript, backward_search_start, backward_search_end)
+            if result:
+                start, end, score, _ = result
+                backward_matches.append((start, end, score, phrase_idx, 'backward'))
+                if debug:
+                    matched_text = transcript[start:end]
+                    print(f"  [DEBUG] Backward match [{phrase_idx}]: '{matched_text}' at {start}-{end} (score: {score:.2f})")
+    
+    if debug:
+        print(f"  [DEBUG] Total matches: {len(forward_matches)} forward, {len(backward_matches)} backward")
+    
+    # =========================================================================
+    # DIRECTION SELECTION: Prefer forward matches (most common sermon pattern)
+    # =========================================================================
+    
+    # Evaluate forward matches for significance
+    forward_significant = _evaluate_match_significance(forward_matches, phrases)
+    backward_significant = _evaluate_match_significance(backward_matches, phrases)
+    
+    if debug:
+        print(f"  [DEBUG] Forward significance: {forward_significant}")
+        print(f"  [DEBUG] Backward significance: {backward_significant}")
+    
+    # Decision logic: prefer forward matches unless backward is clearly better
+    selected_matches = []
+    search_direction = 'forward'
+    
+    if forward_matches and forward_significant['is_significant']:
+        # Forward region has significant matches - use it
+        selected_matches = forward_matches
+        search_direction = 'forward'
+        if debug:
+            print(f"  [DEBUG] Selected FORWARD matches (significant cluster)")
+    elif backward_matches and backward_significant['is_significant'] and not forward_matches:
+        # No forward matches but backward has significant matches
+        selected_matches = backward_matches
+        search_direction = 'backward'
+        if debug:
+            print(f"  [DEBUG] Selected BACKWARD matches (no forward, backward is significant)")
+    elif forward_matches:
+        # Forward has some matches (even if not fully significant) - prefer it
+        selected_matches = forward_matches
+        search_direction = 'forward'
+        if debug:
+            print(f"  [DEBUG] Selected FORWARD matches (has matches, preferred direction)")
+    elif backward_matches:
+        # Only backward matches available
+        selected_matches = backward_matches
+        search_direction = 'backward'
+        if debug:
+            print(f"  [DEBUG] Selected BACKWARD matches (only option)")
+    else:
+        # No matches in either direction
+        if debug:
+            print(f"  [DEBUG] No matches found in either direction")
+        return None
+    
+    # =========================================================================
+    # CLUSTER ANALYSIS: Group contiguous matches and find best cluster
+    # =========================================================================
+    
+    # Sort matches by position (remove direction marker for processing)
+    all_matches = [(m[0], m[1], m[2], m[3]) for m in selected_matches]
+    all_matches.sort(key=lambda x: x[0])
     
     if not all_matches:
         return None
-    
-    # Sort matches by position
-    all_matches.sort(key=lambda x: x[0])
     
     # Filter for contiguity AND validate gap content between matches
     # This prevents including commentary text that happens to contain verse-like phrases
@@ -1747,6 +1925,12 @@ def find_quote_boundaries_improved(verse_text: str, transcript: str, ref_positio
             current_cluster.append(match)
     
     clusters.append(current_cluster)  # Add the last cluster
+    
+    if debug:
+        print(f"  [DEBUG] Found {len(clusters)} match clusters")
+        for i, cluster in enumerate(clusters):
+            phrase_indices = [m[3] for m in cluster]
+            print(f"    Cluster {i}: {len(cluster)} matches, phrase indices: {phrase_indices}")
     
     # Identify significant clusters and track which verse phrase indices they cover
     # A significant cluster has at least 3 matches or covers the verse start/end
@@ -1802,16 +1986,24 @@ def find_quote_boundaries_improved(verse_text: str, transcript: str, ref_positio
     start_pos = first_match[0]
     end_pos = last_match[1]
     
+    if debug:
+        print(f"  [DEBUG] Initial boundaries: {start_pos}-{end_pos}")
+        print(f"  [DEBUG] Quote text: '{transcript[start_pos:end_pos][:100]}...'")
+    
     # Validate and potentially trim the quote end
     quote_text = transcript[start_pos:end_pos]
     validated_end = validate_quote_end(quote_text, verse_text, transcript, start_pos, end_pos)
     if validated_end != end_pos:
+        if debug:
+            print(f"  [DEBUG] Trimmed quote end from {end_pos} to {validated_end}")
         end_pos = validated_end
     
     # Check for verse content that continues after an interjection
     # e.g., "There will your heart be, what? Also." - "Also" is part of the verse
     extended_end = extend_quote_past_interjection(transcript, end_pos, verse_text)
     if extended_end > end_pos:
+        if debug:
+            print(f"  [DEBUG] Extended quote past interjection from {end_pos} to {extended_end}")
         end_pos = extended_end
     
     # Collect all matches that fall within our boundaries for confidence calculation
@@ -1832,7 +2024,84 @@ def find_quote_boundaries_improved(verse_text: str, transcript: str, ref_positio
         # We might have only middle matches, which is unreliable
         avg_confidence *= 0.7
     
+    # =========================================================================
+    # CONFIDENCE ADJUSTMENTS based on search direction and proximity
+    # =========================================================================
+    
+    # Proximity bonus: quote starts close to reference (within 100 chars after)
+    distance_from_ref = start_pos - (ref_position + effective_ref_length)
+    if 0 <= distance_from_ref <= 100 and search_direction == 'forward':
+        avg_confidence = min(1.0, avg_confidence + 0.05)
+        if debug:
+            print(f"  [DEBUG] Proximity bonus applied (+0.05), distance: {distance_from_ref}")
+    
+    # Direction penalty: backward matches are less common, lower confidence
+    if search_direction == 'backward':
+        avg_confidence = max(0.0, avg_confidence - 0.10)
+        if debug:
+            print(f"  [DEBUG] Backward direction penalty applied (-0.10)")
+    
+    # Length validation: reject matches that are too short or too long
+    quote_length = end_pos - start_pos
+    if quote_length < 10:
+        if debug:
+            print(f"  [DEBUG] Quote too short ({quote_length} chars), rejecting")
+        return None
+    if quote_length > 5000:
+        if debug:
+            print(f"  [DEBUG] Quote too long ({quote_length} chars), rejecting")
+        return None
+    
+    if debug:
+        print(f"  [DEBUG] Final boundaries: {start_pos}-{end_pos}, confidence: {avg_confidence:.2f}")
+    
     return (start_pos, end_pos, avg_confidence)
+
+
+def _evaluate_match_significance(matches: list, phrases: list) -> dict:
+    """
+    Evaluate whether a set of matches is significant enough to represent a valid quote.
+    
+    Args:
+        matches: List of match tuples (start, end, score, phrase_idx, direction)
+        phrases: List of distinctive phrases from the verse
+    
+    Returns:
+        Dict with significance info: is_significant, match_count, has_start, has_end
+    """
+    if not matches:
+        return {
+            'is_significant': False,
+            'match_count': 0,
+            'has_start': False,
+            'has_end': False,
+            'phrase_coverage': 0.0
+        }
+    
+    phrase_indices = set(m[3] for m in matches)
+    has_start = 0 in phrase_indices or 1 in phrase_indices
+    has_end = (len(phrases) - 1) in phrase_indices or (len(phrases) - 2) in phrase_indices
+    
+    # Calculate phrase coverage
+    phrase_coverage = len(phrase_indices) / len(phrases) if phrases else 0.0
+    
+    # A match set is significant if:
+    # 1. Has 3+ matches, OR
+    # 2. Has both start and end coverage, OR
+    # 3. Has high phrase coverage (>50%)
+    is_significant = (
+        len(matches) >= 3 or 
+        (has_start and has_end) or 
+        phrase_coverage > 0.5
+    )
+    
+    return {
+        'is_significant': is_significant,
+        'match_count': len(matches),
+        'has_start': has_start,
+        'has_end': has_end,
+        'phrase_coverage': phrase_coverage
+    }
 
 # ============================================================================
 # PARTIAL VERSE RANGE DETECTION

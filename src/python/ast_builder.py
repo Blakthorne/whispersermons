@@ -77,10 +77,11 @@ class ASTBuilder:
     and the new structured document model.
     """
     
-    def __init__(self, config: Optional[ASTBuilderConfig] = None):
+    def __init__(self, config: Optional[ASTBuilderConfig] = None, debug: bool = False):
         self.config = config or ASTBuilderConfig()
         self.processing_metadata = ProcessingMetadata()
         self._stage_start_time: Optional[float] = None
+        self.debug = debug
     
     def _start_stage(self, stage_name: str):
         """Start timing a stage."""
@@ -270,6 +271,7 @@ class ASTBuilder:
         Build children for a paragraph that contains passages.
         
         This interleaves TextNode and PassageNode based on passage positions.
+        Includes validation to ensure quote boundaries are correctly mapped.
         """
         children = []
         current_pos_in_para = 0
@@ -282,22 +284,57 @@ class ASTBuilder:
             quote_start_rel = quote.start_pos - para_start
             quote_end_rel = quote.end_pos - para_start
             
+            # Validation: Log boundary information for debugging
+            if self.debug:
+                ref_str = quote.reference.to_standard_format()
+                print(f"  [AST DEBUG] Mapping {ref_str}:")
+                print(f"    Paragraph bounds: [0, {len(para_content)}] (absolute: [{para_start}, {para_start + len(para_content)}])")
+                print(f"    Quote absolute: [{quote.start_pos}, {quote.end_pos}]")
+                print(f"    Quote relative: [{quote_start_rel}, {quote_end_rel}]")
+            
+            # Validation: Assert boundaries are within expected ranges
+            # These assertions help catch boundary detection bugs early
+            if quote_start_rel < -500 or quote_end_rel > len(para_content) + 500:
+                # Quote is significantly outside this paragraph - this indicates a mapping bug
+                if self.debug:
+                    print(f"    ⚠ WARNING: Quote boundaries significantly outside paragraph!")
+                    print(f"    Quote may be mapped to wrong paragraph.")
+            
             # Clamp to paragraph bounds
+            original_start_rel = quote_start_rel
+            original_end_rel = quote_end_rel
             quote_start_rel = max(0, quote_start_rel)
             quote_end_rel = min(len(para_content), quote_end_rel)
             
+            if self.debug and (original_start_rel != quote_start_rel or original_end_rel != quote_end_rel):
+                print(f"    Clamped to: [{quote_start_rel}, {quote_end_rel}]")
+            
             # Skip if quote is outside this paragraph
             if quote_start_rel >= len(para_content) or quote_end_rel <= 0:
+                if self.debug:
+                    print(f"    ⚠ Skipping: quote is outside paragraph bounds")
                 continue
+            
+            # Validation: Ensure we have meaningful content
+            if quote_end_rel - quote_start_rel < 5:
+                if self.debug:
+                    print(f"    ⚠ WARNING: Quote content is very short ({quote_end_rel - quote_start_rel} chars)")
             
             # Add text before quote
             if quote_start_rel > current_pos_in_para:
                 text_before = para_content[current_pos_in_para:quote_start_rel]
                 if text_before.strip():
                     children.append(create_text_node(text_before))
+                    if self.debug:
+                        preview = text_before[:50].replace('\n', ' ')
+                        print(f"    Added text before quote: '{preview}...' ({len(text_before)} chars)")
             
             # Add passage node
             quote_content = para_content[quote_start_rel:quote_end_rel]
+            
+            if self.debug:
+                preview = quote_content[:80].replace('\n', ' ')
+                print(f"    Quote content: '{preview}...' ({len(quote_content)} chars)")
             
             passage_node = self._build_passage_node(quote, quote_content)
             children.append(passage_node)
@@ -309,10 +346,15 @@ class ASTBuilder:
             text_after = para_content[current_pos_in_para:]
             if text_after.strip():
                 children.append(create_text_node(text_after))
+                if self.debug:
+                    preview = text_after[:50].replace('\n', ' ')
+                    print(f"    Added text after quote: '{preview}...' ({len(text_after)} chars)")
         
         # If no children were added, add the whole content as text
         if not children:
             children.append(create_text_node(para_content))
+            if self.debug:
+                print(f"    No quotes mapped, using full paragraph as text")
         
         return children
     
@@ -398,7 +440,8 @@ def build_ast(
     bible_passage: Optional[str] = None,
     speaker: Optional[str] = None,
     tags: Optional[List[str]] = None,
-    config: Optional[ASTBuilderConfig] = None
+    config: Optional[ASTBuilderConfig] = None,
+    debug: bool = False
 ) -> ASTBuilderResult:
     """
     Convenience function to build AST from processed text.
@@ -411,11 +454,12 @@ def build_ast(
         speaker: Speaker/Author (from metadata)
         tags: Extracted tags
         config: Optional builder configuration
+        debug: Whether to output debug logging
     
     Returns:
         ASTBuilderResult
     """
-    builder = ASTBuilder(config=config)
+    builder = ASTBuilder(config=config, debug=debug)
     return builder.build_from_processed_text(
         paragraphed_text=paragraphed_text,
         quote_boundaries=quote_boundaries,
