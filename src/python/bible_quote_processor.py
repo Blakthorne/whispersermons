@@ -205,7 +205,11 @@ class BibleReference:
 
 @dataclass
 class QuoteBoundary:
-    """Represents a detected Bible quote in the text."""
+    """Represents a detected Bible quote in the text.
+    
+    PHASE 4 ENHANCED: Now includes boundary verification metadata to track
+    adjustments made during the verification process.
+    """
     start_pos: int
     end_pos: int
     reference: BibleReference
@@ -215,9 +219,21 @@ class QuoteBoundary:
     has_interjection: bool = False
     interjection_positions: Optional[List[Tuple[int, int]]] = None  # List of (start, end) positions
     
+    # PHASE 4: Boundary verification metadata
+    original_start_pos: Optional[int] = None  # Original detected start before verification
+    original_end_pos: Optional[int] = None    # Original detected end before verification
+    start_adjustment: int = 0                  # Positive = moved forward, negative = moved backward
+    end_adjustment: int = 0                    # Positive = extended, negative = trimmed
+    boundary_verified: bool = False            # True if boundaries were verified against verse text
+    
     def __post_init__(self):
         if self.interjection_positions is None:
             self.interjection_positions = []
+        # Initialize original positions if not set
+        if self.original_start_pos is None:
+            self.original_start_pos = self.start_pos
+        if self.original_end_pos is None:
+            self.original_end_pos = self.end_pos
 
 # ============================================================================
 # BIBLE API CLIENT
@@ -1490,13 +1506,131 @@ def validate_gap_is_verse_content(gap_text: str, verse_text: str) -> bool:
     return True
 
 
-def validate_quote_end(quote_text: str, verse_text: str, transcript: str, start_pos: int, end_pos: int) -> int:
+def find_verse_end_in_transcript(transcript: str, start_pos: int, verse_text: str,
+                                   max_search: int = 1500, debug: bool = False) -> Optional[int]:
+    """
+    Find where the verse text ends in the transcript using word-by-word matching.
+    
+    PHASE 3 FIX: This function scans forward from the quote start to find where
+    the verse content actually ends, handling transcription variations.
+    
+    Args:
+        transcript: Full transcript text
+        start_pos: Start position of the quote
+        verse_text: The full verse text from Bible API
+        max_search: Maximum characters to search
+        debug: Whether to print debug information
+    
+    Returns:
+        Position in transcript where verse text ends, or None if unreliable
+    """
+    verse_words = get_words(verse_text)
+    if len(verse_words) < 3:
+        return None
+    
+    search_region = transcript[start_pos:start_pos + max_search]
+    
+    # Get word positions in search region
+    word_pattern = re.compile(r'\b\w+\b')
+    word_matches = list(word_pattern.finditer(search_region))
+    
+    if not word_matches:
+        return None
+    
+    search_words = [normalize_for_comparison(m.group()) for m in word_matches]
+    
+    # Track matching progress through verse words
+    verse_idx = 0
+    last_matched_pos = 0
+    matched_count = 0
+    skipped_count = 0
+    
+    for i, search_word in enumerate(search_words):
+        if verse_idx >= len(verse_words):
+            break  # Matched all verse words
+        
+        # Check for match (with fuzzy allowance)
+        if _words_match_fuzzy(search_word, verse_words[verse_idx]):
+            verse_idx += 1
+            matched_count += 1
+            last_matched_pos = word_matches[i].end()
+            skipped_count = 0  # Reset skip counter
+        else:
+            # Allow skipping 1-2 words for interjections or minor variations
+            skipped_count += 1
+            
+            # Check if we can match the NEXT verse word (speaker skipped a word)
+            if verse_idx + 1 < len(verse_words) and _words_match_fuzzy(search_word, verse_words[verse_idx + 1]):
+                verse_idx += 2  # Skip the missed word
+                matched_count += 1
+                last_matched_pos = word_matches[i].end()
+                skipped_count = 0
+            elif skipped_count > 5:
+                # Too many consecutive non-matches - verse likely ended
+                break
+    
+    # Calculate coverage - did we find most of the verse?
+    coverage = matched_count / len(verse_words) if verse_words else 0
+    
+    if debug:
+        print(f"      [END_FIND] Matched {matched_count}/{len(verse_words)} words ({coverage:.1%})")
+    
+    if coverage < 0.5:
+        return None  # Insufficient coverage, boundary unreliable
+    
+    # Return the position after the last matched word
+    return start_pos + last_matched_pos
+
+
+def _words_match_fuzzy(word1: str, word2: str, threshold: float = 0.8) -> bool:
+    """
+    Check if two words match, allowing for transcription variations.
+    
+    Handles common variations like:
+    - "unto" vs "to"
+    - "wholly" vs "holy"
+    - Minor spelling differences
+    """
+    if word1 == word2:
+        return True
+    
+    # Common substitutions in Bible text
+    EQUIVALENTS = {
+        ('unto', 'to'), ('to', 'unto'),
+        ('thee', 'you'), ('you', 'thee'),
+        ('thy', 'your'), ('your', 'thy'),
+        ('thou', 'you'), ('you', 'thou'),
+        ('hath', 'has'), ('has', 'hath'),
+        ('doth', 'does'), ('does', 'doth'),
+        ('ye', 'you'), ('you', 'ye'),
+        ('saith', 'says'), ('says', 'saith'),
+        ('wherefore', 'therefore'), ('therefore', 'wherefore'),
+        ('wholly', 'holy'), ('holy', 'wholly'),  # Common transcription error
+    }
+    
+    if (word1, word2) in EQUIVALENTS or (word2, word1) in EQUIVALENTS:
+        return True
+    
+    # Fuzzy matching for longer words
+    if len(word1) > 3 and len(word2) > 3:
+        ratio = difflib.SequenceMatcher(None, word1, word2).ratio()
+        return ratio >= threshold
+    
+    return False
+
+
+def validate_quote_end(quote_text: str, verse_text: str, transcript: str, start_pos: int, end_pos: int, 
+                       debug: bool = False) -> int:
     """
     Validate that the detected quote end actually matches verse content.
     
-    Handles cases where the phrase matching extends past the actual quote
-    into commentary text (e.g., "...Prince of Peace. That passage" where
-    "That passage" is commentary, not verse content).
+    ENHANCED (Phase 3): Now uses verse text as authoritative guide to:
+    1. Extend the quote if verse content continues past detected end
+    2. Trim the quote if it includes non-verse content
+    
+    Handles cases where:
+    - Quote is cut short (missing "unto God which is your reasonable service")
+    - Quote includes commentary (e.g., "Prince of Peace. That passage...")
     
     Args:
         quote_text: The detected quote text
@@ -1504,10 +1638,42 @@ def validate_quote_end(quote_text: str, verse_text: str, transcript: str, start_
         transcript: Full transcript
         start_pos: Start position of quote
         end_pos: Current end position of quote
+        debug: Whether to print debug information
         
     Returns:
         Corrected end position
     """
+    verse_words = get_words(verse_text)
+    verse_words_set = set(verse_words)
+    
+    if len(verse_words) < 3:
+        return end_pos
+    
+    # =========================================================================
+    # PHASE 3 FIX: Try to find where the verse ACTUALLY ends in transcript
+    # =========================================================================
+    verse_end_pos = find_verse_end_in_transcript(transcript, start_pos, verse_text, debug=debug)
+    
+    if verse_end_pos and verse_end_pos > end_pos:
+        # Verse content extends past our detected end - extend the quote
+        # But validate that the extension contains verse words
+        extension_text = transcript[end_pos:verse_end_pos]
+        extension_words = get_words(extension_text)
+        
+        if extension_words:
+            extension_matches = sum(1 for w in extension_words if w in verse_words_set)
+            extension_ratio = extension_matches / len(extension_words)
+            
+            if extension_ratio >= 0.5:  # At least 50% verse words
+                if debug:
+                    print(f"      [END_VALIDATE] Extending quote by {verse_end_pos - end_pos} chars")
+                    print(f"      [END_VALIDATE] Extension: '{extension_text[:50]}...'")
+                return verse_end_pos
+    
+    # =========================================================================
+    # Original validation: trim if end includes non-verse content
+    # =========================================================================
+    
     # Get the last portion of the detected quote
     last_chunk_size = min(40, len(quote_text))
     last_chunk = quote_text[-last_chunk_size:]
@@ -1516,8 +1682,6 @@ def validate_quote_end(quote_text: str, verse_text: str, transcript: str, start_
     if len(last_words) < 2:
         return end_pos
     
-    verse_words = get_words(verse_text)
-    verse_words_set = set(verse_words)
     verse_text_lower = verse_text.lower()
     
     # Check if the last few words appear in the verse
@@ -1559,6 +1723,8 @@ def validate_quote_end(quote_text: str, verse_text: str, transcript: str, start_
         matching = sum(1 for w in candidate_last_words[-3:] if w in verse_words_set)
         if matching >= 2:
             # This looks like a valid end point
+            if debug:
+                print(f"      [END_VALIDATE] Trimming quote to sentence boundary at {end_idx}")
             return start_pos + end_idx
     
     return end_pos
@@ -1670,17 +1836,37 @@ def extend_quote_past_interjection(transcript: str, current_end: int, verse_text
 
 # Common patterns that introduce Bible quotes after the reference
 # These patterns appear BETWEEN the verse reference and the actual quoted text
+# ENHANCED: Now includes compound patterns like "says Paul writes"
 INTRO_PHRASE_PATTERNS = [
-    # Attribution patterns (e.g., "says", "writes", "tells us")
+    # === COMPOUND ATTRIBUTION PATTERNS (check these FIRST as they're longer) ===
+    # "says [Name] writes/says" patterns
+    r'(?:says?|tells?\s+us)\s+(?:Paul|Jesus|David|Moses|Peter|John|James|Solomon|Isaiah|Jeremiah|the\s+(?:Lord|apostle|prophet))\s+(?:writes?|says?|tells?\s+us|wrote|said)\s+',
+    # "writes [Name] says" patterns (less common but occurs)
+    r'(?:writes?)\s+(?:Paul|Jesus|David|Moses|Peter|John|James|Solomon|Isaiah|Jeremiah)\s+(?:says?|tells?\s+us|said)\s+',
+    # "he/she says [action] that" patterns
+    r'(?:he|she|it)\s+(?:says?|tells?\s+us|writes?)\s+(?:here|there|to\s+us|unto\s+us)?\s*',
+    
+    # === AUTHOR ATTRIBUTION PATTERNS ===
+    # "Paul writes", "Jesus says", "David said" - author before verb
+    r'(?:Paul|Jesus|David|Moses|Peter|John|James|Solomon|Isaiah|Jeremiah|the\s+(?:Lord|apostle|prophet))\s+(?:says?|writes?|wrote|said|tells?\s+us)\s+',
+    
+    # === SIMPLE ATTRIBUTION PATTERNS ===
+    # Single verb patterns (e.g., "says", "writes", "tells us")
     r'(?:says?|writes?|tells?\s+us|teaches?|declares?|proclaims?|records?|states?|reads?)\s+',
-    # Author attribution (e.g., "Paul writes", "Jesus says", "David said")
-    r'(?:Paul|Jesus|David|Moses|Peter|John|James|Solomon|Isaiah|Jeremiah)\s+(?:says?|writes?|wrote|said|tells?\s+us)\s+',
-    # Continuation patterns (e.g., "he says", "it says", "the Bible says")
-    r'(?:he|she|it|the\s+(?:Bible|Scripture|Word|Lord|Apostle))\s+(?:says?|tells?\s+us|writes?)\s+',
-    # Quote markers
+    
+    # === CONTINUATION/CONTEXT PATTERNS ===
+    # "the Bible says", "Scripture says", "the Word says"
+    r'(?:the\s+)?(?:Bible|Scripture|Word|Lord)\s+(?:says?|tells?\s+us|writes?)\s+',
+    
+    # === QUOTE MARKER PATTERNS ===
+    # "quote", "and I quote", etc.
     r'(?:quote|and\s+I\s+quote)\s*[,:]?\s*',
-    # Verse reading patterns
+    # "let's read", "it reads"
     r'(?:let(?:\'s)?\s+read|it\s+reads?)\s*[,:]?\s*',
+    
+    # === VERSE LOCATION PATTERNS ===
+    # "verse X says", "in verse X we read"
+    r'(?:verse\s+\d+\s+)?(?:says?|we\s+read)\s+',
 ]
 
 # Combined pattern for all intro phrases
@@ -1688,7 +1874,7 @@ INTRO_PHRASE_COMBINED = '|'.join(INTRO_PHRASE_PATTERNS)
 
 
 def extract_reference_intro_length(transcript: str, ref_position: int, ref_length: int, 
-                                    max_intro_length: int = 100) -> int:
+                                    max_intro_length: int = 150) -> int:
     """
     Calculate how much text to skip past the reference to reach the quoted text.
     
@@ -1697,11 +1883,14 @@ def extract_reference_intro_length(transcript: str, ref_position: int, ref_lengt
     - "Paul writes in Romans 12:1..." (the intro comes BEFORE the reference)
     - "Romans 12 one says Paul writes I beseech you..." (skip past "says Paul writes ")
     
+    ENHANCED: Now handles compound/chained intro patterns by applying patterns
+    repeatedly until no more matches are found.
+    
     Args:
         transcript: The full transcript text
         ref_position: Position where the reference starts in the transcript
         ref_length: Length of the reference text itself
-        max_intro_length: Maximum characters to search for intro phrases (default 100)
+        max_intro_length: Maximum characters to search for intro phrases (default 150)
     
     Returns:
         Total length to skip (ref_length + intro phrase length)
@@ -1717,17 +1906,108 @@ def extract_reference_intro_length(transcript: str, ref_position: int, ref_lengt
     after_ref = transcript[search_start:search_end]
     
     # Try to match intro patterns at the start of this text
+    # ENHANCED: Apply patterns REPEATEDLY to catch compound patterns
+    total_intro_length = 0
+    remaining_text = after_ref
+    
+    # Compile pattern once
     intro_pattern = re.compile(
         r'^[\s,]*(?:' + INTRO_PHRASE_COMBINED + r')',
         re.IGNORECASE
     )
     
-    match = intro_pattern.match(after_ref)
-    if match:
-        intro_length = match.end()
-        return ref_length + intro_length
+    # Apply patterns up to 5 times to catch compound chains
+    for _ in range(5):
+        match = intro_pattern.match(remaining_text)
+        if match:
+            matched_length = match.end()
+            total_intro_length += matched_length
+            remaining_text = remaining_text[matched_length:]
+        else:
+            break
     
-    return ref_length
+    return ref_length + total_intro_length
+
+
+def validate_start_is_verse_text(transcript: str, detected_start: int, verse_text: str,
+                                  max_search_forward: int = 100, debug: bool = False) -> int:
+    """
+    Verify that detected_start points to actual verse text, not intro phrases.
+    
+    This function provides an additional layer of validation after intro phrase
+    detection to ensure we're capturing the actual Bible verse content.
+    
+    PHASE 2 FIX: Handles cases where intro detection misses patterns like
+    "his face. Romans 12 one says Paul writes I beseech you..."
+    
+    Args:
+        transcript: Full transcript text
+        detected_start: Proposed start position of the quote
+        verse_text: The expected verse text from Bible API
+        max_search_forward: Maximum characters to search forward for better match
+        debug: Whether to print debug information
+    
+    Returns:
+        Adjusted start position that matches verse beginning
+    """
+    verse_words = get_words(verse_text)
+    if len(verse_words) < 3:
+        return detected_start  # Can't validate short verses
+    
+    # First 5 words of verse are our "fingerprint"
+    first_verse_words = verse_words[:min(5, len(verse_words))]
+    
+    # Check if detected start matches verse start
+    detected_text = transcript[detected_start:detected_start + 150]
+    detected_words = get_words(detected_text)[:len(first_verse_words)]
+    
+    if not detected_words:
+        return detected_start
+    
+    # Calculate initial match score
+    initial_matches = sum(1 for i, w in enumerate(detected_words) 
+                         if i < len(first_verse_words) and w == first_verse_words[i])
+    
+    if debug:
+        print(f"      [START_VALIDATE] Initial match: {initial_matches}/{len(first_verse_words)} words")
+        print(f"      [START_VALIDATE] Verse starts: '{' '.join(first_verse_words)}'")
+        print(f"      [START_VALIDATE] Detected starts: '{' '.join(detected_words)}'")
+    
+    # If initial match is good (>= 60%), use original position
+    if initial_matches >= len(first_verse_words) * 0.6:
+        return detected_start
+    
+    # Search forward for better match
+    best_pos = detected_start
+    best_score = initial_matches
+    
+    # Use word boundaries to search
+    word_pattern = re.compile(r'\b(' + re.escape(first_verse_words[0]) + r')\b', re.IGNORECASE)
+    
+    search_area = transcript[detected_start:detected_start + max_search_forward]
+    
+    for match in word_pattern.finditer(search_area):
+        search_pos = detected_start + match.start()
+        search_text = transcript[search_pos:search_pos + 150]
+        search_words = get_words(search_text)[:len(first_verse_words)]
+        
+        matches = sum(1 for i, w in enumerate(search_words)
+                     if i < len(first_verse_words) and w == first_verse_words[i])
+        
+        if matches > best_score:
+            best_score = matches
+            best_pos = search_pos
+            
+            if debug:
+                print(f"      [START_VALIDATE] Better match at +{search_pos - detected_start}: {matches}/{len(first_verse_words)}")
+    
+    # Only use new position if it's significantly better
+    if best_score > initial_matches and best_pos > detected_start:
+        if debug:
+            print(f"      [START_VALIDATE] Adjusted start forward by {best_pos - detected_start} chars")
+        return best_pos
+    
+    return detected_start
 
 
 def find_quote_boundaries_improved(verse_text: str, transcript: str, ref_position: int, 
@@ -1990,9 +2270,18 @@ def find_quote_boundaries_improved(verse_text: str, transcript: str, ref_positio
         print(f"  [DEBUG] Initial boundaries: {start_pos}-{end_pos}")
         print(f"  [DEBUG] Quote text: '{transcript[start_pos:end_pos][:100]}...'")
     
+    # PHASE 2 FIX: Validate and adjust start position to exclude intro phrases
+    # This handles cases where phrase matching catches intro text
+    validated_start = validate_start_is_verse_text(transcript, start_pos, verse_text, 
+                                                    max_search_forward=100, debug=debug)
+    if validated_start != start_pos:
+        if debug:
+            print(f"  [DEBUG] Adjusted start forward from {start_pos} to {validated_start}")
+        start_pos = validated_start
+    
     # Validate and potentially trim the quote end
     quote_text = transcript[start_pos:end_pos]
-    validated_end = validate_quote_end(quote_text, verse_text, transcript, start_pos, end_pos)
+    validated_end = validate_quote_end(quote_text, verse_text, transcript, start_pos, end_pos, debug=debug)
     if validated_end != end_pos:
         if debug:
             print(f"  [DEBUG] Trimmed quote end from {end_pos} to {validated_end}")
@@ -2645,7 +2934,111 @@ def detect_interjections(text: str, start_pos: int, end_pos: int) -> List[Tuple[
     
     return merged
 
+
 # ============================================================================
+# PHASE 4: BOUNDARY VERIFICATION
+# ============================================================================
+
+def verify_quote_boundaries(quote: QuoteBoundary, transcript: str, verbose: bool = False) -> QuoteBoundary:
+    """
+    Verify and potentially adjust quote boundaries against the verse text.
+    
+    PHASE 4: This function provides a post-processing step to verify that detected
+    boundaries accurately capture the Bible verse content by comparing against the
+    verse text from the API.
+    
+    The function:
+    1. Validates start boundary matches verse start
+    2. Validates end boundary includes complete verse
+    3. Tracks any adjustments made for debugging/logging
+    4. Updates confidence score based on boundary quality
+    
+    Args:
+        quote: QuoteBoundary object with initial boundaries
+        transcript: Full transcript text
+        verbose: Whether to print verification details
+    
+    Returns:
+        Updated QuoteBoundary with verified positions and adjustment metadata
+    """
+    # Store original positions
+    original_start = quote.start_pos
+    original_end = quote.end_pos
+    
+    verse_text = quote.verse_text
+    if not verse_text or len(get_words(verse_text)) < 3:
+        # Can't verify without verse text
+        quote.boundary_verified = False
+        return quote
+    
+    ref_str = quote.reference.to_standard_format()
+    
+    # =========================================================================
+    # VERIFY START BOUNDARY
+    # =========================================================================
+    verified_start = validate_start_is_verse_text(
+        transcript, original_start, verse_text, 
+        max_search_forward=100, debug=verbose
+    )
+    
+    # =========================================================================
+    # VERIFY END BOUNDARY
+    # =========================================================================
+    # First try to find actual verse end
+    verse_end_pos = find_verse_end_in_transcript(
+        transcript, verified_start, verse_text, 
+        max_search=1500, debug=verbose
+    )
+    
+    verified_end = original_end
+    if verse_end_pos and verse_end_pos > verified_start:
+        # Validate the extension contains verse words
+        verse_words_set = set(get_words(verse_text))
+        extension_text = transcript[original_end:verse_end_pos]
+        extension_words = get_words(extension_text)
+        
+        if extension_words:
+            extension_matches = sum(1 for w in extension_words if w in verse_words_set)
+            extension_ratio = extension_matches / len(extension_words)
+            
+            if extension_ratio >= 0.5:
+                verified_end = verse_end_pos
+    
+    # =========================================================================
+    # UPDATE QUOTE WITH VERIFIED BOUNDARIES
+    # =========================================================================
+    start_adjustment = verified_start - original_start
+    end_adjustment = verified_end - original_end
+    
+    quote.original_start_pos = original_start
+    quote.original_end_pos = original_end
+    quote.start_pos = verified_start
+    quote.end_pos = verified_end
+    quote.start_adjustment = start_adjustment
+    quote.end_adjustment = end_adjustment
+    quote.boundary_verified = True
+    
+    # Adjust confidence based on boundary changes
+    # Large adjustments indicate initial detection was less accurate
+    total_adjustment = abs(start_adjustment) + abs(end_adjustment)
+    if total_adjustment > 50:
+        quote.confidence = max(0.5, quote.confidence - 0.10)
+    elif total_adjustment > 20:
+        quote.confidence = max(0.6, quote.confidence - 0.05)
+    elif end_adjustment > 0:
+        # Extended to include more verse text - slight confidence boost
+        quote.confidence = min(1.0, quote.confidence + 0.02)
+    
+    if verbose and (start_adjustment != 0 or end_adjustment != 0):
+        print(f"      🔍 Boundary verification for {ref_str}:")
+        if start_adjustment != 0:
+            print(f"         Start: {original_start} → {verified_start} (adjustment: {start_adjustment:+d})")
+        if end_adjustment != 0:
+            print(f"         End: {original_end} → {verified_end} (adjustment: {end_adjustment:+d})")
+        print(f"         Final confidence: {quote.confidence:.2f}")
+    
+    return quote
+
 
 # ============================================================================
 # MAIN PROCESSING PIPELINE
@@ -3018,6 +3411,10 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
                         has_interjection=bool(all_exclusions),
                         interjection_positions=all_exclusions
                     )
+                    
+                    # PHASE 4: Verify and potentially adjust boundaries
+                    quote = verify_quote_boundaries(quote, text, verbose=verbose)
+                    
                     quotes.append(quote)
                 else:
                     if verbose:
@@ -3095,6 +3492,10 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
                             has_interjection=bool(all_exclusions),
                             interjection_positions=all_exclusions
                         )
+                        
+                        # PHASE 4: Verify and potentially adjust boundaries
+                        quote = verify_quote_boundaries(quote, text, verbose=verbose)
+                        
                         quotes.append(quote)
                     else:
                         if verbose:
@@ -3117,6 +3518,24 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
             trans_counts = Counter(q.translation for q in quotes)
             trans_summary = ', '.join(f"{t}: {c}" for t, c in trans_counts.most_common())
             print(f"   • Translations detected: {trans_summary}")
+        
+        # PHASE 4: Show boundary verification statistics
+        if quotes:
+            verified_quotes = [q for q in quotes if q.boundary_verified]
+            adjusted_quotes = [q for q in verified_quotes if q.start_adjustment != 0 or q.end_adjustment != 0]
+            if verified_quotes:
+                print(f"   • Boundaries verified: {len(verified_quotes)}/{len(quotes)}")
+            if adjusted_quotes:
+                print(f"   • Boundaries adjusted: {len(adjusted_quotes)}")
+                # Show details for each adjusted quote
+                for q in adjusted_quotes:
+                    ref_str = q.reference.to_standard_format()
+                    adjustments = []
+                    if q.start_adjustment != 0:
+                        adjustments.append(f"start {q.start_adjustment:+d}")
+                    if q.end_adjustment != 0:
+                        adjustments.append(f"end {q.end_adjustment:+d}")
+                    print(f"      - {ref_str}: {', '.join(adjustments)}")
         
         print(f"   • Output length: {len(text)} characters")
         print("=" * 60)

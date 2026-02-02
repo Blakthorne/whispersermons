@@ -590,7 +590,8 @@ def process_sermon(
     model_name: str = "medium",
     language: str = "en",
     use_ast: bool = True,  # New: enable structured document model
-    skip_transcription: bool = False
+    skip_transcription: bool = False,
+    debug_ast: bool = False  # New: enable debug logging for AST building
 ) -> Dict[str, Any]:
     """
     Full sermon processing pipeline:
@@ -607,6 +608,7 @@ def process_sermon(
         language: Language code or 'auto'
         use_ast: If True, include documentState with structured AST
         skip_transcription: If True, load test transcript instead of processing audio
+        debug_ast: If True, emit detailed debug logs during AST building
     
     Returns:
         Structured document data with optional documentState
@@ -683,13 +685,17 @@ def process_sermon(
         try:
             from ast_builder import build_ast
             
+            if debug_ast:
+                print("[DEBUG AST] Starting AST building with debug mode enabled", file=sys.stderr)
+            
             ast_result = build_ast(
                 paragraphed_text=paragraphed_text,
                 quote_boundaries=quote_boundaries,
                 title=result['title'],
                 bible_passage=result['biblePassage'],
                 speaker=result['speaker'],
-                tags=tags
+                tags=tags,
+                debug=debug_ast  # Pass debug flag to AST builder
             )
             
             # Include full document state in result
@@ -781,11 +787,18 @@ def handle_command(command: Dict[str, Any]) -> Dict[str, Any]:
         model_name = command.get('model', 'medium')
         language = command.get('language', 'en')
         skip_transcription = command.get('skip_transcription', False)
+        debug_ast = command.get('debug_ast', False)
         
         if not file_path:
             return {'error': 'filePath is required'}
         
-        return process_sermon(file_path, model_name, language, skip_transcription=skip_transcription)
+        return process_sermon(
+            file_path, 
+            model_name, 
+            language, 
+            skip_transcription=skip_transcription,
+            debug_ast=debug_ast
+        )
     
     elif cmd == 'extract_metadata':
         file_path = command.get('filePath')
