@@ -3147,6 +3147,24 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
             print(f"      • {ref.original_text} → {ref.to_standard_format()}")
     
     # Phase 2: Normalize references in text
+    # IMPORTANT: Store original_text lengths BEFORE normalization because the
+    # text will change (e.g., "Romans 12 one" → "Romans 12:1") but we need the
+    # original lengths for accurate quote boundary detection.
+    # 
+    # Map: position → (original_text, original_length)
+    # We use a list of tuples sorted by position to handle potential edge cases
+    original_text_info = []
+    for ref in references:
+        original_text_info.append({
+            'position': ref.position,
+            'original_text': ref.original_text,
+            'original_length': len(ref.original_text),
+            'book': ref.book,
+            'chapter': ref.chapter,
+            'verse_start': ref.verse_start,
+            'verse_end': ref.verse_end
+        })
+    
     report_progress(15, "Normalizing reference formats...")
     if verbose:
         print("\n✏️  Phase 2: Normalizing reference formats...")
@@ -3154,6 +3172,22 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
     
     # Re-detect references after normalization (positions may have changed)
     references = detect_bible_references(text, api_client, text)
+    
+    # Restore original_text information from pre-normalization
+    # Match by book/chapter/verse since positions may have shifted
+    for ref in references:
+        for orig_info in original_text_info:
+            if (ref.book == orig_info['book'] and 
+                ref.chapter == orig_info['chapter'] and
+                ref.verse_start == orig_info['verse_start'] and
+                ref.verse_end == orig_info['verse_end']):
+                # Store the original text info for later use
+                # We can't modify original_text (it should reflect normalized text for
+                # accurate position-based operations), but we store the original length
+                # in a new field for boundary detection
+                ref._pre_normalization_length = orig_info['original_length']
+                ref._pre_normalization_text = orig_info['original_text']
+                break
     
     # Phase 3: Fetch Bible verse texts and detect translation PER QUOTE
     # This handles speakers who switch translations mid-sermon
@@ -3262,8 +3296,10 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
                 verse_text = verse_texts[cache_key]
                 detected_translation = verse_translations.get(cache_key, api_client.translation)
                 
-                # Calculate the length of the normalized reference to skip past it
-                ref_length = len(ref.to_standard_format())
+                # Use the actual length of the matched reference text in the transcript,
+                # not the normalized format. This is critical because spoken numbers like
+                # "Romans 12 one" (13 chars) differ from "Romans 12:1" (11 chars).
+                ref_length = len(ref.original_text) if ref.original_text else len(ref.to_standard_format())
                 
                 # Skip past the reference text to avoid matching verse numbers as part of quote
                 result = find_quote_boundaries_improved(verse_text, text, ref.position, ref_length)
