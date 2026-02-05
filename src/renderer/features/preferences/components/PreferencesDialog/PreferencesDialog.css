@@ -1,0 +1,111 @@
+.preferences-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+  animation: preferencesOverlayFadeIn 0.2s ease-out;
+}
+
+.preferences-dialog {
+  background-color: var(--bg-primary);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  width: min(90vw, 600px);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  animation: preferencesDialogSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Header with tab bar */
+.preferences-header {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg-secondary);
+}
+
+.preferences-title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+}
+
+.preferences-title-bar h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preferences-close {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preferences-close:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Tab bar */
+.preferences-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px 12px;
+}
+
+/* Content area */
+.preferences-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+/* Footer with actions */
+.preferences-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  background-color: var(--bg-secondary);
+}
+
+/* Animations */
+@keyframes preferencesOverlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes preferencesDialogSlideIn {
+  from {
+    transform: translateY(10px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}

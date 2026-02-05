@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState, useEffect, useRef, type ReactNode } from 'react';
 import { useTranscription, useBatchQueue, useQueueSelection } from '../features/transcription';
 import { useHistory } from '../features/history';
+import { usePreferences } from '../features/preferences';
 import { useTheme, useCopyToClipboard, useElectronMenu } from '../hooks';
 import { selectAndProcessFiles } from '../utils';
 import type { HistoryItem, SelectedFile, SermonDocument, OutputFormat, TranscriptionSettings } from '../types';
@@ -19,6 +20,7 @@ import {
   TranscriptionStateContext,
   TranscriptionActionsContext,
 } from './contexts';
+import { PreferencesProvider } from './PreferencesContext';
 import type {
   ThemeContextValue,
   HistoryContextValue,
@@ -51,6 +53,10 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     clearHistory,
     removeHistoryItem,
   } = useHistory();
+
+  // Get advanced Whisper settings from preferences
+  const { preferences } = usePreferences();
+  const whisperAdvancedSettings = preferences.whisper;
 
   const {
     selectedFile,
@@ -186,6 +192,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     getCompletedTranscription,
   } = useBatchQueue({
     settings,
+    advancedSettings: whisperAdvancedSettings,
     onHistoryAdd: (item) => {
       addHistoryItem(item);
       // Track the ID of the newly created history item
@@ -766,14 +773,16 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
   );
 
   return (
-    <ThemeContext.Provider value={themeContextValue}>
-      <HistoryContext.Provider value={historyContextValue}>
-        <TranscriptionStateContext.Provider value={transcriptionStateValue}>
-          <TranscriptionActionsContext.Provider value={transcriptionActionsValue}>
-            {children}
-          </TranscriptionActionsContext.Provider>
-        </TranscriptionStateContext.Provider>
-      </HistoryContext.Provider>
-    </ThemeContext.Provider>
+    <PreferencesProvider>
+      <ThemeContext.Provider value={themeContextValue}>
+        <HistoryContext.Provider value={historyContextValue}>
+          <TranscriptionStateContext.Provider value={transcriptionStateValue}>
+            <TranscriptionActionsContext.Provider value={transcriptionActionsValue}>
+              {children}
+            </TranscriptionActionsContext.Provider>
+          </TranscriptionStateContext.Provider>
+        </HistoryContext.Provider>
+      </ThemeContext.Provider>
+    </PreferencesProvider>
   );
 }

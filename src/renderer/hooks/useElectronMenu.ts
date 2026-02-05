@@ -7,6 +7,7 @@ import {
   onMenuStartTranscription,
   onMenuCancelTranscription,
   onMenuToggleHistory,
+  onMenuOpenPreferences,
 } from '../services/electronAPI';
 
 export interface ElectronMenuHandlers {
@@ -16,6 +17,7 @@ export interface ElectronMenuHandlers {
   onStartTranscription?: () => void;
   onCancelTranscription?: () => void;
   onToggleHistory?: () => void;
+  onOpenPreferences?: () => void;
 }
 
 export function useElectronMenu(handlers: ElectronMenuHandlers): void {
@@ -61,6 +63,12 @@ export function useElectronMenu(handlers: ElectronMenuHandlers): void {
     unsubscribers.push(
       onMenuToggleHistory(() => {
         handlersRef.current.onToggleHistory?.();
+      })
+    );
+
+    unsubscribers.push(
+      onMenuOpenPreferences(() => {
+        handlersRef.current.onOpenPreferences?.();
       })
     );
 

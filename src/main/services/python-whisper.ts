@@ -236,7 +236,7 @@ export async function transcribe(
   options: TranscriptionOptions,
   onProgress?: TranscribeProgressCallback
 ): Promise<TranscriptionResult> {
-  const { filePath, model, language } = options;
+  const { filePath, model, language, advancedSettings } = options;
 
   try {
     const result = await runPythonCommand<{ text: string; rawTranscript: string }>(
@@ -245,6 +245,7 @@ export async function transcribe(
         filePath,
         model,
         language,
+        advancedSettings,
       },
       (response) => {
         if (onProgress && response.percent !== undefined) {
@@ -280,7 +281,7 @@ export async function processSermon(
   onPipelineProgress?: PipelineProgressCallback,
   skipTranscription: boolean = false
 ): Promise<TranscriptionResult & { sermon?: SermonProcessingResult }> {
-  const { filePath, model, language } = options;
+  const { filePath, model, language, advancedSettings } = options;
 
   try {
     const result = await runPythonCommand<SermonProcessingResult>(
@@ -290,6 +291,7 @@ export async function processSermon(
         model,
         language,
         skip_transcription: skipTranscription,
+        advancedSettings,
       },
       (response) => {
         // Route progress to appropriate callbacks

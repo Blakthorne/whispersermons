@@ -6,11 +6,13 @@ import type {
   TranscriptionProgress,
   UpdateStatus,
   PipelineStage,
+  WhisperAdvancedSettings,
 } from '../shared/types';
 
 // Extended options for Python transcription (sermon-only)
 interface ExtendedTranscriptionOptions extends TranscriptionOptions {
   testMode?: boolean;
+  advancedSettings?: WhisperAdvancedSettings;
 }
 
 // Python environment status
@@ -122,6 +124,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onMenuToggleHistory: (callback: () => void) => {
     ipcRenderer.on('menu:toggleHistory', () => callback());
     return () => ipcRenderer.removeAllListeners('menu:toggleHistory');
+  },
+  onMenuOpenPreferences: (callback: () => void) => {
+    ipcRenderer.on('menu:openPreferences', () => callback());
+    return () => ipcRenderer.removeAllListeners('menu:openPreferences');
   },
 
   checkForUpdates: () => ipcRenderer.invoke('update:check'),

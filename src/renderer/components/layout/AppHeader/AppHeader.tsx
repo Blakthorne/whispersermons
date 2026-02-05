@@ -1,14 +1,23 @@
-import React from 'react';
-import { Moon, Sun, History, Terminal } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Moon, Sun, History, Terminal, Settings } from 'lucide-react';
 import { Button } from '../../ui';
-import { useAppTheme, useAppHistory } from '../../../contexts';
+import { useAppTheme, useAppHistory, useAppPreferences } from '../../../contexts';
 import { useDebugLogs } from '../../../hooks';
 import { DebugLogsModal } from '../../ui/DebugLogsModal';
+import { PreferencesDialog } from '../../../features/preferences';
+import { onMenuOpenPreferences } from '../../../services/electronAPI';
 import appIcon from '../../../assets/icon.png';
 
 function AppHeader(): React.JSX.Element {
   const { theme, toggleTheme } = useAppTheme();
   const { history, showHistory, toggleHistory } = useAppHistory();
+  const {
+    isPreferencesOpen,
+    preferencesTab,
+    openPreferences,
+    closePreferences,
+    setPreferencesTab,
+  } = useAppPreferences();
   const {
     logs,
     isOpen: isDebugLogsOpen,
@@ -18,6 +27,16 @@ function AppHeader(): React.JSX.Element {
     copyLogsWithSystemInfo,
     clearLogs,
   } = useDebugLogs();
+
+  // Listen for Cmd+, keyboard shortcut via menu
+  useEffect(() => {
+    const unsubscribe = onMenuOpenPreferences(() => {
+      openPreferences();
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [openPreferences]);
 
   return (
     <>
@@ -38,6 +57,14 @@ function AppHeader(): React.JSX.Element {
               onClick={openDebugLogs}
               title="Debug Logs"
               aria-label="Open debug logs"
+            />
+            <Button
+              variant="icon"
+              icon={<Settings size={18} />}
+              iconOnly
+              onClick={openPreferences}
+              title="Preferences (⌘,)"
+              aria-label="Open preferences"
             />
             <Button
               variant="icon"
@@ -68,6 +95,13 @@ function AppHeader(): React.JSX.Element {
         onCopyLogs={copyLogs}
         onCopyLogsWithSystemInfo={copyLogsWithSystemInfo}
         onClearLogs={clearLogs}
+      />
+
+      <PreferencesDialog
+        isOpen={isPreferencesOpen}
+        activeTab={preferencesTab}
+        onClose={closePreferences}
+        onTabChange={setPreferencesTab}
       />
     </>
   );

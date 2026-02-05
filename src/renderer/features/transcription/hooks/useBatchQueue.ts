@@ -15,9 +15,11 @@ import {
 import type { PipelineProgress, SermonTranscriptionResult } from '../../../services/electronAPI';
 import { logger } from '../../../services/logger';
 import { sanitizePath } from '../../../../shared/utils';
+import type { WhisperAdvancedSettings } from '../../preferences/types';
 
 interface UseBatchQueueOptions {
   settings: TranscriptionSettings;
+  advancedSettings?: WhisperAdvancedSettings;
   onHistoryAdd?: (item: HistoryItem) => void;
   onFirstComplete?: (id: string, text: string, file: SelectedFile, sermonDocument?: SermonDocument) => void;
 }
@@ -44,7 +46,7 @@ function generateId(): string {
 }
 
 export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueReturn {
-  const { settings, onHistoryAdd, onFirstComplete } = options;
+  const { settings, advancedSettings, onHistoryAdd, onFirstComplete } = options;
 
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -173,6 +175,7 @@ export function useBatchQueue(options: UseBatchQueueOptions): UseBatchQueueRetur
           language: settings.language,
           outputFormat: 'vtt',
           testMode: settings.testMode,
+          advancedSettings,
         });
 
         const endTime = Date.now();

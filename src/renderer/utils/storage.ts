@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   THEME: 'whispersermons_theme',
   LAST_MODEL: 'whispersermons_lastModel',
   QUOTE_REVIEW_PREFIX: 'whispersermons_quoteReview_',
+  PREFERENCES: 'whispersermons_preferences',
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

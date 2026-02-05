@@ -173,6 +173,14 @@ function createMenu() {
       submenu: [
         { role: 'about' },
         { type: 'separator' as const },
+        {
+          label: 'Preferences...',
+          accelerator: 'Cmd+,',
+          click: () => {
+            mainWindow?.webContents.send('menu:openPreferences');
+          },
+        },
+        { type: 'separator' as const },
         { role: 'services' },
         { type: 'separator' as const },
         { role: 'hide' },

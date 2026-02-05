@@ -54,8 +54,11 @@ export interface PipelineProgress {
   message: string;
 }
 
+import type { WhisperAdvancedSettings } from '../features/preferences/types';
+
 export interface ExtendedTranscriptionOptions extends TranscriptionOptions {
   testMode?: boolean;
+  advancedSettings?: WhisperAdvancedSettings;
 }
 
 /**
@@ -117,6 +120,7 @@ export interface ElectronAPI {
   onMenuStartTranscription: (callback: () => void) => Unsubscribe;
   onMenuCancelTranscription: (callback: () => void) => Unsubscribe;
   onMenuToggleHistory: (callback: () => void) => Unsubscribe;
+  onMenuOpenPreferences: (callback: () => void) => Unsubscribe;
   checkForUpdates: () => Promise<{ success: boolean; error?: string }>;
   downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
   installUpdate: () => void;

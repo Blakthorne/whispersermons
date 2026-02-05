@@ -182,6 +182,10 @@ export function onMenuToggleHistory(callback: () => void): Unsubscribe {
   return window.electronAPI?.onMenuToggleHistory(callback) ?? (() => {});
 }
 
+export function onMenuOpenPreferences(callback: () => void): Unsubscribe {
+  return window.electronAPI?.onMenuOpenPreferences(callback) ?? (() => {});
+}
+
 // =============================================================================
 // Python Environment Management
 // =============================================================================

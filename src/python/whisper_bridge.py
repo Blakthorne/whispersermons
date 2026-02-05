@@ -334,7 +334,8 @@ def transcribe_audio(
     file_path: str,
     model_name: str = "medium",
     language: str = "en",
-    on_progress: Optional[Any] = None
+    on_progress: Optional[Any] = None,
+    advanced_settings: Optional[Dict[str, Any]] = None
 ) -> str:
     """
     Transcribe audio using OpenAI Whisper with optimized parameters.
@@ -344,6 +345,7 @@ def transcribe_audio(
         model_name: Whisper model name (tiny, base, small, medium, large-v3, etc.)
         language: Language code or 'auto' for auto-detection
         on_progress: Optional callback for progress updates
+        advanced_settings: Optional dict of advanced Whisper settings
     
     Returns:
         Transcribed text
@@ -353,7 +355,7 @@ def transcribe_audio(
     
     emit_progress(1, "Transcribing audio", 25, "Starting transcription...")
     
-    # Prepare transcription parameters
+    # Default transcription parameters
     transcribe_kwargs = {
         'temperature': (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),  # Temperature fallback cascade
         'compression_ratio_threshold': 2.4,  # Detect repetitions
@@ -364,6 +366,46 @@ def transcribe_audio(
         'fp16': device in ('mps', 'cuda'),  # Half-precision on GPU
         'initial_prompt': "This is a clear audio recording of speech."
     }
+    
+    # Apply advanced settings if provided
+    if advanced_settings:
+        # Temperature (can be single value or list for cascade)
+        if 'temperature' in advanced_settings:
+            temp = advanced_settings['temperature']
+            if isinstance(temp, list):
+                transcribe_kwargs['temperature'] = tuple(temp)
+            else:
+                transcribe_kwargs['temperature'] = temp
+        
+        # Beam search parameters
+        if 'beamSize' in advanced_settings:
+            transcribe_kwargs['beam_size'] = advanced_settings['beamSize']
+        if 'bestOf' in advanced_settings:
+            transcribe_kwargs['best_of'] = advanced_settings['bestOf']
+        if 'patience' in advanced_settings and advanced_settings['patience'] is not None:
+            transcribe_kwargs['patience'] = advanced_settings['patience']
+        
+        # Quality thresholds
+        if 'compressionRatioThreshold' in advanced_settings:
+            transcribe_kwargs['compression_ratio_threshold'] = advanced_settings['compressionRatioThreshold']
+        if 'logprobThreshold' in advanced_settings:
+            transcribe_kwargs['logprob_threshold'] = advanced_settings['logprobThreshold']
+        if 'noSpeechThreshold' in advanced_settings:
+            transcribe_kwargs['no_speech_threshold'] = advanced_settings['noSpeechThreshold']
+        
+        # Context and behavior
+        if 'conditionOnPreviousText' in advanced_settings:
+            transcribe_kwargs['condition_on_previous_text'] = advanced_settings['conditionOnPreviousText']
+        if 'wordTimestamps' in advanced_settings:
+            transcribe_kwargs['word_timestamps'] = advanced_settings['wordTimestamps']
+        if 'initialPrompt' in advanced_settings:
+            transcribe_kwargs['initial_prompt'] = advanced_settings['initialPrompt']
+        
+        # Performance
+        if 'fp16' in advanced_settings:
+            transcribe_kwargs['fp16'] = advanced_settings['fp16']
+        if 'hallucinationSilenceThreshold' in advanced_settings and advanced_settings['hallucinationSilenceThreshold'] is not None:
+            transcribe_kwargs['hallucination_silence_threshold'] = advanced_settings['hallucinationSilenceThreshold']
     
     # Only set language if not 'auto'
     if language and language != 'auto':
@@ -712,7 +754,8 @@ def process_sermon(
     language: str = "en",
     use_ast: bool = True,  # New: enable structured document model
     skip_transcription: bool = False,
-    debug_ast: bool = False  # New: enable debug logging for AST building
+    debug_ast: bool = False,  # New: enable debug logging for AST building
+    advanced_settings: Optional[Dict[str, Any]] = None  # New: advanced Whisper settings
 ) -> Dict[str, Any]:
     """
     Full sermon processing pipeline:
@@ -730,6 +773,7 @@ def process_sermon(
         use_ast: If True, include documentState with structured AST
         skip_transcription: If True, load test transcript instead of processing audio
         debug_ast: If True, emit detailed debug logs during AST building
+        advanced_settings: Optional dict of advanced Whisper settings
     
     Returns:
         Structured document data with optional documentState
@@ -769,7 +813,7 @@ def process_sermon(
         except Exception as e:
             return {'error': f"Failed to load test transcript: {str(e)}"}
     else:
-        raw_text = transcribe_audio(file_path, model_name, language)
+        raw_text = transcribe_audio(file_path, model_name, language, advanced_settings=advanced_settings)
         
     result['rawTranscript'] = raw_text
     
@@ -848,7 +892,8 @@ def process_sermon(
 def transcribe_only(
     file_path: str,
     model_name: str = "medium",
-    language: str = "en"
+    language: str = "en",
+    advanced_settings: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Simple transcription without sermon processing.
@@ -857,11 +902,12 @@ def transcribe_only(
         file_path: Path to audio file
         model_name: Whisper model to use
         language: Language code or 'auto'
+        advanced_settings: Optional dict of advanced Whisper settings
     
     Returns:
         Dict with transcription text
     """
-    text = transcribe_audio(file_path, model_name, language)
+    text = transcribe_audio(file_path, model_name, language, advanced_settings=advanced_settings)
     return {
         'text': text,
         'rawTranscript': text
@@ -907,11 +953,12 @@ def handle_command(command: Dict[str, Any]) -> Dict[str, Any]:
         file_path = command.get('filePath')
         model_name = command.get('model', 'medium')
         language = command.get('language', 'en')
+        advanced_settings = command.get('advancedSettings')
         
         if not file_path:
             return {'error': 'filePath is required'}
         
-        return transcribe_only(file_path, model_name, language)
+        return transcribe_only(file_path, model_name, language, advanced_settings)
     
     elif cmd == 'process_sermon':
         file_path = command.get('filePath')
@@ -919,6 +966,7 @@ def handle_command(command: Dict[str, Any]) -> Dict[str, Any]:
         language = command.get('language', 'en')
         skip_transcription = command.get('skip_transcription', False)
         debug_ast = command.get('debug_ast', False)
+        advanced_settings = command.get('advancedSettings')
         
         if not file_path:
             return {'error': 'filePath is required'}
@@ -928,7 +976,8 @@ def handle_command(command: Dict[str, Any]) -> Dict[str, Any]:
             model_name, 
             language, 
             skip_transcription=skip_transcription,
-            debug_ast=debug_ast
+            debug_ast=debug_ast,
+            advanced_settings=advanced_settings
         )
     
     elif cmd == 'extract_metadata':

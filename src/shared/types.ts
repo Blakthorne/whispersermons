@@ -143,11 +143,32 @@ export interface TranscriptionProgress {
   status: string;
 }
 
+/**
+ * Advanced Whisper transcription settings for fine-tuning transcription behavior.
+ * These settings are optional and will use defaults if not provided.
+ */
+export interface WhisperAdvancedSettings {
+  temperature?: number | number[];
+  beamSize?: number;
+  bestOf?: number;
+  patience?: number | null;
+  compressionRatioThreshold?: number;
+  logprobThreshold?: number;
+  noSpeechThreshold?: number | null;
+  conditionOnPreviousText?: boolean;
+  wordTimestamps?: boolean;
+  initialPrompt?: string;
+  fp16?: boolean;
+  hallucinationSilenceThreshold?: number | null;
+}
+
 export interface TranscriptionOptions {
   filePath: string;
   model: WhisperModelName;
   language: LanguageCode;
   outputFormat: OutputFormat;
+  /** Optional advanced Whisper settings from preferences */
+  advancedSettings?: WhisperAdvancedSettings;
 }
 
 export interface TranscriptionResult {
