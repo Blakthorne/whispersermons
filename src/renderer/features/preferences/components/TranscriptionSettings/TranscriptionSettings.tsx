@@ -275,18 +275,17 @@ function TranscriptionSettings(): React.JSX.Element {
                   </label>
                   <Tooltip content={SETTINGS_HELP.noSpeechThreshold} />
                 </div>
-                {settings.noSpeechThreshold !== null && (
-                  <input
-                    type="number"
-                    className="settings-input-number"
-                    value={settings.noSpeechThreshold}
-                    onChange={(e) => handleChange('noSpeechThreshold', parseFloat(e.target.value))}
-                    step="0.1"
-                    min="0"
-                    max="1"
-                    aria-label="Silence threshold value"
-                  />
-                )}
+                <input
+                  type="number"
+                  className="settings-input-number"
+                  value={settings.noSpeechThreshold ?? 0.6}
+                  onChange={(e) => handleChange('noSpeechThreshold', parseFloat(e.target.value))}
+                  step="0.1"
+                  min="0"
+                  max="1"
+                  disabled={settings.noSpeechThreshold === null}
+                  aria-label="Silence threshold value"
+                />
               </div>
             </div>
             
@@ -345,17 +344,16 @@ function TranscriptionSettings(): React.JSX.Element {
                   </label>
                   <Tooltip content={SETTINGS_HELP.patience} />
                 </div>
-                {settings.patience !== null && (
-                  <input
-                    type="number"
-                    className="settings-input-number"
-                    value={settings.patience}
-                    onChange={(e) => handleChange('patience', parseFloat(e.target.value))}
-                    step="0.1"
-                    min="0"
-                    aria-label="Patience factor value"
-                  />
-                )}
+                <input
+                  type="number"
+                  className="settings-input-number"
+                  value={settings.patience ?? 1.0}
+                  onChange={(e) => handleChange('patience', parseFloat(e.target.value))}
+                  step="0.1"
+                  min="0"
+                  disabled={settings.patience === null}
+                  aria-label="Patience factor value"
+                />
               </div>
             </div>
             
@@ -385,17 +383,16 @@ function TranscriptionSettings(): React.JSX.Element {
                   </label>
                   <Tooltip content={SETTINGS_HELP.hallucinationSilenceThreshold} />
                 </div>
-                {settings.hallucinationSilenceThreshold !== null && (
-                  <input
-                    type="number"
-                    className="settings-input-number"
-                    value={settings.hallucinationSilenceThreshold}
-                    onChange={(e) => handleChange('hallucinationSilenceThreshold', parseFloat(e.target.value))}
-                    step="0.1"
-                    min="0"
-                    aria-label="Hallucination threshold value"
-                  />
-                )}
+                <input
+                  type="number"
+                  className="settings-input-number"
+                  value={settings.hallucinationSilenceThreshold ?? 0.5}
+                  onChange={(e) => handleChange('hallucinationSilenceThreshold', parseFloat(e.target.value))}
+                  step="0.1"
+                  min="0"
+                  disabled={settings.hallucinationSilenceThreshold === null}
+                  aria-label="Hallucination threshold value"
+                />
               </div>
             </div>
           </div>

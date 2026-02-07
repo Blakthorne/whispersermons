@@ -8,7 +8,7 @@
 .transcription-settings {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
   padding-bottom: 8px;
 }
 
@@ -18,7 +18,8 @@
   align-items: flex-start;
   gap: 10px;
   padding: 12px 14px;
-  background-color: var(--accent-surface-dim);
+  background-color: var(--accent-light);
+  border: 1px solid var(--accent-border);
   border-radius: var(--radius-sm);
   font-size: 0.8125rem;
   color: var(--text-secondary);
@@ -40,6 +41,10 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding: 14px;
+  background-color: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
 }
 
 .settings-group-title {
@@ -51,22 +56,36 @@
   letter-spacing: 0.5px;
 }
 
+.settings-group-advanced .settings-group-title {
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 0.875rem;
+}
+
 /* Advanced Section Header */
+.settings-group-advanced {
+  padding: 0;
+  background-color: transparent;
+  border: none;
+}
+
 .settings-group-header-collapsible {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 14px;
   background-color: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background-color var(--transition-base);
+  transition: all var(--transition-base);
 }
 
 .settings-group-header-collapsible:hover {
   background-color: var(--bg-tertiary);
+  border-color: var(--border-hover);
 }
 
 .settings-group-header-left {
@@ -96,7 +115,11 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 14px 0 0;
+  padding: 14px;
+  margin-top: 12px;
+  background-color: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
 }
 
 .settings-group-description {
@@ -114,6 +137,7 @@
   padding: 12px;
   background-color: var(--bg-secondary);
   border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
 }
 
 .settings-subgroup-title {
@@ -243,9 +267,10 @@
   font-size: 0.875rem;
   color: var(--text-primary);
   text-align: right;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition: border-color var(--transition-base), box-shadow var(--transition-base), opacity var(--transition-base), background-color var(--transition-base), color var(--transition-base);
   appearance: textfield;
   -moz-appearance: textfield;
+  cursor: text;
 }
 
 .settings-input-number::-webkit-inner-spin-button,
@@ -257,7 +282,15 @@
 .settings-input-number:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-surface-dim);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.settings-input-number:disabled {
+  opacity: 0.6;
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
+  cursor: not-allowed;
 }
 
 /* Select/dropdown styling */
@@ -269,13 +302,21 @@
   font-size: 0.875rem;
   color: var(--text-primary);
   cursor: pointer;
-  transition: border-color var(--transition-base);
+  transition: border-color var(--transition-base), opacity var(--transition-base), background-color var(--transition-base), color var(--transition-base);
   width: 100%;
 }
 
 .settings-select:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.settings-select:disabled {
+  opacity: 0.6;
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
+  cursor: not-allowed;
 }
 
 /* Toggle switch */
@@ -323,7 +364,7 @@
   font-family: inherit;
   resize: vertical;
   min-height: 56px;
-  transition: border-color var(--transition-base);
+  transition: border-color var(--transition-base), opacity var(--transition-base), background-color var(--transition-base), color var(--transition-base);
   width: 100%;
 }
 
@@ -334,6 +375,14 @@
 .settings-textarea:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.settings-textarea:disabled {
+  opacity: 0.6;
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
+  cursor: not-allowed;
 }
 
 /* Checkbox */
