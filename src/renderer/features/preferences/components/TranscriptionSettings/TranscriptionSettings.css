@@ -332,6 +332,13 @@
   flex-shrink: 0;
 }
 
+.toggle-switch.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--bg-secondary);
+  border-color: var(--border-subtle);
+}
+
 .toggle-switch.active {
   background-color: var(--accent);
   border-color: var(--accent);

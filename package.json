@@ -2,7 +2,7 @@
   "name": "whispersermons",
   "version": "1.8.0",
   "type": "module",
-  "description": "Desktop sermon transcription app powered by openai-whisper",
+  "description": "Desktop sermon transcription app powered by mlx-whisper for Apple Silicon",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -102,6 +102,7 @@
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/tar": "^6.1.13",
     "@vitejs/plugin-react": "^5.1.1",
     "@vitest/coverage-v8": "^4.0.14",
     "@vitest/ui": "^4.0.14",

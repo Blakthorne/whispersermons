@@ -1,8 +1,9 @@
 /**
  * Whisper Service - Model Management and Utilities
  *
- * This module provides model management for Python Whisper.
+ * This module provides model management for mlx-whisper.
  * Transcription is handled by python-whisper.ts.
+ * Models are MLX-format models from HuggingFace Hub (mlx-community).
  */
 
 import { spawn } from 'child_process';
@@ -17,8 +18,9 @@ import { getPythonPath, getWhisperCacheDir } from './python-installer';
 // ============================================================================
 
 /**
- * Python Whisper model information.
- * Models are automatically downloaded to the cache directory when first used.
+ * MLX Whisper model information.
+ * Models are MLX-format models from HuggingFace Hub (mlx-community).
+ * They are automatically downloaded and cached by huggingface_hub.
  */
 interface WhisperModelInfo {
   /** Display size for UI */
@@ -29,11 +31,13 @@ interface WhisperModelInfo {
   speed: string;
   /** Estimated VRAM requirement */
   vram: string;
+  /** HuggingFace repo ID for mlx-community model */
+  hfRepo: string;
 }
 
 /**
- * Available Python Whisper models with their characteristics.
- * These match OpenAI's Whisper model names.
+ * Available MLX Whisper models with their characteristics.
+ * These are pre-converted MLX format models from mlx-community on HuggingFace.
  */
 export const MODELS: Record<string, WhisperModelInfo> = {
   tiny: {
@@ -41,60 +45,70 @@ export const MODELS: Record<string, WhisperModelInfo> = {
     quality: 1,
     speed: '~10x',
     vram: '~1 GB',
+    hfRepo: 'mlx-community/whisper-tiny',
   },
   'tiny.en': {
     size: '~75 MB',
     quality: 1,
     speed: '~10x',
     vram: '~1 GB',
+    hfRepo: 'mlx-community/whisper-tiny.en-mlx',
   },
   base: {
     size: '~140 MB',
     quality: 2,
     speed: '~7x',
     vram: '~1 GB',
+    hfRepo: 'mlx-community/whisper-base-mlx',
   },
   'base.en': {
     size: '~140 MB',
     quality: 2,
     speed: '~7x',
     vram: '~1 GB',
+    hfRepo: 'mlx-community/whisper-base.en-mlx',
   },
   small: {
     size: '~460 MB',
     quality: 3,
     speed: '~4x',
     vram: '~2 GB',
+    hfRepo: 'mlx-community/whisper-small-mlx',
   },
   'small.en': {
     size: '~460 MB',
     quality: 3,
     speed: '~4x',
     vram: '~2 GB',
+    hfRepo: 'mlx-community/whisper-small.en-mlx',
   },
   medium: {
     size: '~1.5 GB',
     quality: 4,
     speed: '~2x',
     vram: '~5 GB',
+    hfRepo: 'mlx-community/whisper-medium-mlx',
   },
   'medium.en': {
     size: '~1.5 GB',
     quality: 4,
     speed: '~2x',
     vram: '~5 GB',
+    hfRepo: 'mlx-community/whisper-medium-mlx',
   },
   'large-v3': {
     size: '~3.1 GB',
     quality: 5,
     speed: '~1x',
     vram: '~10 GB',
+    hfRepo: 'mlx-community/whisper-large-v3-mlx',
   },
   'large-v3-turbo': {
     size: '~1.6 GB',
     quality: 5,
     speed: '~2x',
     vram: '~6 GB',
+    hfRepo: 'mlx-community/whisper-large-v3-turbo',
   },
 };
 
@@ -109,39 +123,43 @@ const MODEL_ALIASES: Record<string, string> = {
 // ============================================================================
 
 /**
- * Get the directory where Whisper models are cached.
- * Uses the same location as python-installer.
+ * Get the directory where models are cached.
+ * MLX models are cached via HuggingFace Hub in the HF_HOME directory.
  */
 export function getModelsDir(): string {
   return getWhisperCacheDir();
 }
 
 /**
- * Get the path to a specific model file.
- * Python Whisper caches models in a 'whisper' subdirectory as .pt files.
+ * Get the HuggingFace Hub cache directory for a specific model.
+ * HuggingFace Hub stores models in: HF_HOME/hub/models--org--repo/
  */
-export function getModelPath(modelName: string): string {
+function getHfModelCacheDir(modelName: string): string {
   const actualModel = MODEL_ALIASES[modelName] || modelName;
+  const modelInfo = MODELS[actualModel];
+  if (!modelInfo) return '';
 
-  // Python Whisper stores models in: XDG_CACHE_HOME/whisper/modelname.pt
-  const modelsDir = getModelsDir();
-  const whisperDir = path.join(modelsDir, 'whisper');
-
-  // Handle turbo model naming
-  if (actualModel === 'large-v3-turbo') {
-    return path.join(whisperDir, 'large-v3-turbo.pt');
-  }
-
-  return path.join(whisperDir, `${actualModel}.pt`);
+  const hfHome = path.join(getModelsDir(), 'huggingface');
+  // HuggingFace Hub uses 'models--org--repo' format for cache directories
+  const repoParts = modelInfo.hfRepo.replace('/', '--');
+  return path.join(hfHome, 'hub', `models--${repoParts}`);
 }
 
 /**
  * Check if a model has been downloaded.
+ * Checks the HuggingFace Hub cache directory for the model.
  */
 export function isModelDownloaded(modelName: string): boolean {
   try {
-    const modelPath = getModelPath(modelName);
-    return fs.existsSync(modelPath);
+    const cacheDir = getHfModelCacheDir(modelName);
+    if (!cacheDir) return false;
+    // Check if the cache directory exists and has snapshot content
+    if (!fs.existsSync(cacheDir)) return false;
+    const snapshotsDir = path.join(cacheDir, 'snapshots');
+    if (!fs.existsSync(snapshotsDir)) return false;
+    // Check if there's at least one snapshot
+    const snapshots = fs.readdirSync(snapshotsDir);
+    return snapshots.length > 0;
   } catch {
     return false;
   }
@@ -158,16 +176,32 @@ function formatFileSize(bytes: number): string {
 }
 
 /**
- * Get actual file size of a downloaded model.
+ * Get actual total size of a downloaded model from the HF Hub cache.
  */
 function getActualModelSize(modelName: string): string | null {
   try {
-    const modelPath = getModelPath(modelName);
-    if (fs.existsSync(modelPath)) {
-      const stats = fs.statSync(modelPath);
-      return formatFileSize(stats.size);
-    }
-    return null;
+    const cacheDir = getHfModelCacheDir(modelName);
+    if (!cacheDir || !fs.existsSync(cacheDir)) return null;
+
+    // Calculate total size of all files in the cache directory
+    let totalSize = 0;
+    const walkDir = (dir: string): void => {
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walkDir(fullPath);
+          } else if (entry.isFile()) {
+            totalSize += fs.statSync(fullPath).size;
+          }
+        }
+      } catch {
+        // Ignore permission errors
+      }
+    };
+    walkDir(cacheDir);
+    return totalSize > 0 ? formatFileSize(totalSize) : null;
   } catch {
     return null;
   }
@@ -204,8 +238,8 @@ export function listModels(): ModelInfo[] {
 }
 
 /**
- * Download a Whisper model using Python.
- * This triggers the Python Whisper model download via the Python bridge.
+ * Download a Whisper model using mlx-whisper (from HuggingFace Hub).
+ * This triggers the model download via the Python bridge.
  */
 export async function downloadModel(
   modelName: string,
@@ -228,11 +262,12 @@ export async function downloadModel(
     fs.mkdirSync(modelsDir, { recursive: true });
   }
 
-  // Set up environment for Python Whisper to use our cache directory
+  // Set up environment for mlx-whisper to use our cache directory
+  const hfHome = path.join(modelsDir, 'huggingface');
   const env = {
     ...process.env,
     PYTHONUNBUFFERED: '1',
-    XDG_CACHE_HOME: modelsDir,
+    HF_HOME: hfHome,
     WHISPER_CACHE_DIR: modelsDir,
   };
 
@@ -246,10 +281,14 @@ export async function downloadModel(
       remainingTime: '',
     });
 
-    // Download model using Python
+    // Download model using huggingface_hub - downloads MLX model files from HuggingFace
+    const hfRepo = modelInfo.hfRepo;
     const proc = spawn(
       pythonPath,
-      ['-c', `import whisper; whisper.load_model('${actualModel}'); print('Model downloaded successfully')`],
+      [
+        '-c',
+        `from huggingface_hub import snapshot_download; snapshot_download('${hfRepo}'); print('Model downloaded successfully')`,
+      ],
       { env, stdio: ['pipe', 'pipe', 'pipe'] }
     );
 
@@ -303,11 +342,11 @@ export async function downloadModel(
 
     proc.on('close', (code) => {
       if (code === 0) {
-        const modelPath = getModelPath(actualModel);
+        const cacheDir = getHfModelCacheDir(actualModel);
         resolve({
           success: true,
           model: actualModel,
-          path: modelPath,
+          path: cacheDir,
         });
       } else {
         reject(new Error(`Model download failed: ${stderr || 'Unknown error'}`));
@@ -319,23 +358,27 @@ export async function downloadModel(
 }
 
 /**
- * Delete a downloaded model.
+ * Delete a downloaded model from the HuggingFace Hub cache.
  */
 export function deleteModel(modelName: string): { success: boolean; error?: string } {
   try {
-    const modelPath = getModelPath(modelName);
+    const cacheDir = getHfModelCacheDir(modelName);
     const modelsDir = getModelsDir();
 
+    if (!cacheDir) {
+      return { success: false, error: 'Unknown model' };
+    }
+
     // Security check: ensure path is within models directory
-    const resolvedPath = path.resolve(modelPath);
+    const resolvedPath = path.resolve(cacheDir);
     const resolvedModelsDir = path.resolve(modelsDir);
 
     if (!resolvedPath.startsWith(resolvedModelsDir)) {
       return { success: false, error: 'Invalid model path' };
     }
 
-    if (fs.existsSync(modelPath)) {
-      fs.unlinkSync(modelPath);
+    if (fs.existsSync(cacheDir)) {
+      fs.rmSync(cacheDir, { recursive: true, force: true });
       return { success: true };
     }
     return { success: false, error: 'Model not found' };

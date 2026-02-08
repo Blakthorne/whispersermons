@@ -88,7 +88,7 @@ export interface PythonStatus {
   pythonVersion?: string;
   packagesInstalled: boolean;
   modelsDownloaded: boolean;
-  device?: 'mps' | 'cuda' | 'cpu';
+  device?: 'mlx' | 'cpu';
 }
 
 type ProgressCallback = (progress: InstallProgress) => void;
@@ -232,30 +232,28 @@ export async function checkPythonStatus(): Promise<PythonStatus> {
   // Check packages
   if (status.installed) {
     try {
-      await runCommand(pythonPath, ['-c', 'import whisper; import sentence_transformers; import keybert']);
+      await runCommand(pythonPath, ['-c', 'import mlx_whisper; import mlx_embeddings']);
       status.packagesInstalled = true;
     } catch {
       status.packagesInstalled = false;
     }
   }
 
-  // Check device (MPS/CUDA/CPU)
+  // Check device — always MLX on Apple Silicon (the only supported platform)
   if (status.packagesInstalled) {
     try {
-      const deviceCheck = await runCommand(pythonPath, [
-        '-c',
-        'import torch; print("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))',
-      ]);
-      status.device = deviceCheck.trim() as 'mps' | 'cuda' | 'cpu';
+      await runCommand(pythonPath, ['-c', 'import mlx.core']);
+      status.device = 'mlx';
     } catch {
       status.device = 'cpu';
     }
   }
 
-  // Check Whisper models
+  // Check Whisper models (MLX format in HuggingFace Hub cache)
   const modelsDir = getWhisperCacheDir();
-  const modelFiles = ['base.pt', 'medium.pt'];
-  status.modelsDownloaded = modelFiles.some((f) => existsSync(path.join(modelsDir, f)));
+  const hfCacheDir = path.join(modelsDir, 'huggingface', 'hub');
+  status.modelsDownloaded = existsSync(hfCacheDir) && 
+    fs.readdirSync(hfCacheDir).some(dir => dir.startsWith('models--mlx-community--whisper'));
 
   return status;
 }
@@ -326,41 +324,54 @@ export async function installPackages(onProgress: ProgressCallback): Promise<voi
     message: 'Upgrading pip...',
   });
 
-  // Upgrade pip first
-  await runCommand(pythonPath, ['-m', 'pip', 'install', '--upgrade', 'pip']);
+  try {
+    // Upgrade pip first
+    await runCommand(pythonPath, ['-m', 'pip', 'install', '--upgrade', 'pip']);
 
-  onProgress({
-    stage: 'packages',
-    stageName: 'Installing packages',
-    percent: 10,
-    message: 'Installing PyTorch...',
-  });
+    onProgress({
+      stage: 'packages',
+      stageName: 'Installing packages',
+      percent: 10,
+      message: 'Installing MLX and mlx-whisper...',
+    });
 
-  // Install PyTorch first (large download)
-  await runCommand(pipPath, ['install', 'torch', 'torchvision', 'torchaudio']);
+    // Install mlx-whisper first (includes mlx as dependency)
+    await runCommand(pipPath, ['install', 'mlx-whisper']);
+    
+    // Verify mlx-whisper installation
+    await runCommand(pythonPath, ['-c', 'import mlx_whisper']);
 
-  onProgress({
-    stage: 'packages',
-    stageName: 'Installing packages',
-    percent: 50,
-    message: 'Installing Whisper and ML packages...',
-  });
+    onProgress({
+      stage: 'packages',
+      stageName: 'Installing packages',
+      percent: 40,
+      message: 'Installing mlx-embeddings for semantic analysis...',
+    });
 
-  // Install from requirements
-  await runCommand(pipPath, ['install', '-r', requirementsPath]);
+    // Install remaining packages from requirements
+    // (includes mlx-embeddings for paragraph segmentation & tag extraction)
+    await runCommand(pipPath, ['install', '-r', requirementsPath]);
+    
+    // Verify critical packages
+    await runCommand(pythonPath, ['-c', 'import mlx_whisper; import mlx_embeddings']);
 
-  onProgress({
-    stage: 'packages',
-    stageName: 'Installing packages',
-    percent: 90,
-    message: 'Downloading NLTK data...',
-  });
+    onProgress({
+      stage: 'packages',
+      stageName: 'Installing packages',
+      percent: 70,
+      message: 'Pre-downloading embedding model...',
+    });
 
-  // Download NLTK data
-  await runCommand(pythonPath, [
-    '-c',
-    "import nltk; nltk.download('averaged_perceptron_tagger_eng', quiet=True); nltk.download('punkt_tab', quiet=True)",
-  ]);
+    // Pre-download EmbeddingGemma-300m-4bit model to avoid delay on first transcription
+    const hfHome = path.join(getWhisperCacheDir(), 'huggingface');
+    await runCommand(pythonPath, [
+      '-c',
+      `import os; os.environ['HF_HOME'] = '${hfHome.replace(/\\/g, '/')}'; from mlx_embeddings.utils import load; load('mlx-community/embeddinggemma-300m-4bit')`,
+    ]);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Package installation failed: ${errorMsg}`);
+  }
 
   onProgress({
     stage: 'packages',
@@ -371,7 +382,7 @@ export async function installPackages(onProgress: ProgressCallback): Promise<voi
 }
 
 /**
- * Download default Whisper model
+ * Download default Whisper model (MLX format from HuggingFace Hub)
  */
 export async function downloadWhisperModel(
   modelName: string = 'base',
@@ -384,21 +395,35 @@ export async function downloadWhisperModel(
     mkdirSync(modelsDir, { recursive: true });
   }
 
+  // Map model names to HuggingFace repo IDs
+  const modelRepoMap: Record<string, string> = {
+    tiny: 'mlx-community/whisper-tiny',
+    base: 'mlx-community/whisper-base-mlx',
+    small: 'mlx-community/whisper-small-mlx',
+    medium: 'mlx-community/whisper-medium-mlx',
+    'large-v3': 'mlx-community/whisper-large-v3-mlx',
+    'large-v3-turbo': 'mlx-community/whisper-large-v3-turbo',
+  };
+
+  const hfRepo = modelRepoMap[modelName] || `mlx-community/whisper-${modelName}`;
+
   onProgress({
     stage: 'models',
     stageName: 'Downloading Whisper model',
     percent: 0,
-    message: `Downloading ${modelName} model...`,
+    message: `Downloading ${modelName} model (MLX format)...`,
   });
 
-  // Use Whisper's download function
+  const hfHome = path.join(modelsDir, 'huggingface');
+
+  // Use huggingface_hub to download the model
   await runCommand(pythonPath, [
     '-c',
     `
 import os
-os.environ['XDG_CACHE_HOME'] = '${modelsDir.replace(/\\/g, '/')}'
-import whisper
-whisper.load_model('${modelName}')
+os.environ['HF_HOME'] = '${hfHome.replace(/\\/g, '/')}'
+from huggingface_hub import snapshot_download
+snapshot_download('${hfRepo}')
 print('Model downloaded successfully')
 `,
   ]);

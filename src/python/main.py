@@ -1,106 +1,51 @@
-import torch
-
-# Detect and configure Apple Silicon GPU (MPS)
-if torch.backends.mps.is_available():
-    device = "mps"
-    print("🚀 Using Apple Silicon GPU (MPS) for acceleration")
-else:
-    device = "cpu"
-    print("Using CPU (MPS not available)")
-
 # Fix SSL certificate verification issues on macOS
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
-import whisper
-from sentence_transformers import SentenceTransformer
+"""
+Sermon Processing Pipeline
+==========================
+
+Core pipeline for WhisperDesk sermon transcription post-processing.
+
+Embedding Model
+---------------
+Uses EmbeddingGemma-300m-4bit (mlx-community/embeddinggemma-300m-4bit) via
+mlx-embeddings for all embedding tasks (paragraph segmentation AND tag
+extraction). This replaced the previous dual-model setup:
+  - all-MiniLM-L6-v2 (384-dim, sentence-transformers) → removed
+  - all-mpnet-base-v2 (768-dim, sentence-transformers) → removed
+  - keyword extraction library → removed (replaced by semantic KB matching)
+  - NLTK POS tagging → removed
+
+The single 768-dim model runs natively on Apple Silicon via MLX with no
+PyTorch dependency. MTEB score ~69.67.
+
+Threshold Calibration
+---------------------
+EmbeddingGemma produces higher cosine similarities between related sentences
+compared to the old MiniLM model, requiring threshold recalibration:
+  - Paragraph segmentation: 0.45 (was 0.30) for pipeline call
+  - segment_into_paragraphs() default: 0.55 (was 0.65)
+  - Tag semantic_threshold: 0.40 (unchanged)
+
+Calibrated on test_mode_transcript.txt (580 sentences → 15 paragraphs at 0.45).
+"""
+
+import mlx_whisper
 import numpy as np
 import re
 from typing import List, Optional
 
-# Import KeyBERT for keyword extraction (tags)
-try:
-    from keybert import KeyBERT
-    KEYBERT_AVAILABLE = True
-except ImportError:
-    KEYBERT_AVAILABLE = False
-    print("⚠️  KeyBERT not installed. Install with: pip install keybert")
-
-# Import NLTK for part-of-speech tagging (noun filtering)
-try:
-    import nltk
-    from nltk import pos_tag, word_tokenize
-    # Ensure required NLTK data is available
-    try:
-        nltk.data.find('taggers/averaged_perceptron_tagger_eng')
-    except LookupError:
-        nltk.download('averaged_perceptron_tagger_eng', quiet=True)
-    try:
-        nltk.data.find('tokenizers/punkt_tab')
-    except LookupError:
-        nltk.download('punkt_tab', quiet=True)
-    NLTK_AVAILABLE = True
-except ImportError:
-    NLTK_AVAILABLE = False
-    print("⚠️  NLTK not installed. Install with: pip install nltk")
+# Unified embedding model (EmbeddingGemma-300m-4bit via mlx-embeddings)
+# Replaces both all-MiniLM-L6-v2 (384-dim) and all-mpnet-base-v2 (768-dim)
+# with a single 768-dim model with MTEB score ~69.67, native MLX GPU acceleration
+from embedding_model import encode_texts, load_model
 
 # Import Bible quote processor
 from bible_quote_processor import process_text, QuoteBoundary
 
-# Load sentence transformer for semantic paragraph detection
-print("Loading semantic model for paragraph detection...")
-semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
-if device == "mps":
-    semantic_model = semantic_model.to(device)
-    print("✓ Semantic model loaded on GPU")
-
-# High-quality model for tag extraction (loaded lazily when needed)
-TAG_MODEL_NAME = "all-mpnet-base-v2"  # Highest quality sentence-transformers model
-tag_model = None  # Loaded on first use
-religious_embedding = None  # Cached embedding of religious seed concepts
-
-# Seed concepts that define the semantic space of "Christian religious themes"
-# These phrases capture core religious concepts for semantic similarity filtering
-RELIGIOUS_SEED_CONCEPTS = [
-    # Core Christianity
-    "Christian faith theology belief",
-    "Jesus Christ salvation gospel messiah",
-    "Bible scripture holy word testament",
-    "God almighty creator heaven divine",
-    "Holy Spirit presence comforter",
-    
-    # Spiritual practices
-    "prayer worship praise devotion",
-    "church congregation fellowship ministry",
-    "baptism communion sacrament ordinance",
-    "preaching sermon teaching discipleship",
-    
-    # Theological concepts
-    "sin forgiveness redemption atonement",
-    "grace mercy blessing favor",
-    "resurrection eternal life heaven paradise",
-    "salvation justification sanctification",
-    
-    # Christian virtues and character
-    "faith hope love charity kindness",
-    "righteousness holiness purity obedience",
-    "repentance confession humility meekness",
-    
-    # Biblical themes and events
-    "prophets apostles disciples servants",
-    "covenant promise prophecy fulfillment",
-    "creation fall exodus passover",
-    "crucifixion resurrection ascension",
-    
-    # Christian life
-    "witness testimony evangelism missions",
-    "stewardship tithe offering generosity",
-    "suffering persecution trial endurance",
-    "family marriage parenting children",
-]
-
-# =============================================================================
-# THEOLOGICAL CONCEPTS KNOWLEDGE BASE
+# Cached embeddings for theological concepts (computed once, reused)
 # =============================================================================
 # This is NOT a restricted tag list - it's a semantic knowledge base for
 # inferring what the sermon is ABOUT. The embedding model finds concepts that
@@ -378,73 +323,21 @@ THEOLOGICAL_CONCEPTS_KB = [
 theological_concept_embeddings = None
 theological_concept_names = None  # Clean names without descriptions
 
-# Stop words to exclude from tag extraction
-COMMON_STOP_WORDS = {
-    # Standard English stop words
-    'the', 'and', 'is', 'in', 'it', 'to', 'of', 'for', 'on', 'with', 'as', 'at', 'by',
-    'this', 'that', 'from', 'or', 'an', 'be', 'was', 'were', 'been', 'being', 'have',
-    'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may',
-    'might', 'must', 'shall', 'can', 'need', 'dare', 'ought', 'used', 'a', 'about',
-    'above', 'after', 'again', 'against', 'all', 'am', 'any', 'are', 'because',
-    'before', 'below', 'between', 'both', 'but', 'cannot', 'come', 'came', 'down',
-    'during', 'each', 'few', 'further', 'get', 'go', 'going', 'gone', 'got', 'having',
-    'he', 'she', 'her', 'here', 'him', 'his', 'how', 'if', 'into', 'its', 'just',
-    'know', 'like', 'make', 'me', 'more', 'most', 'my', 'no', 'not', 'now', 'only',
-    'other', 'our', 'out', 'over', 'own', 'said', 'same', 'see', 'so', 'some', 'such',
-    'take', 'than', 'their', 'them', 'then', 'there', 'these', 'they', 'through',
-    'too', 'under', 'up', 'very', 'want', 'way', 'we', 'well', 'what', 'when',
-    'where', 'which', 'while', 'who', 'why', 'you', 'your', 'also', 'back', 'even',
-    'first', 'look', 'new', 'now', 'one', 'people', 'say', 'think', 'time', 'two',
-    'use', 'tell', 'told', 'thing', 'things', 'man', 'men', 'let', 'put', 'many',
-    'much', 'every', 'still', 'something', 'someone', 'anything', 'everything',
-    'nothing', 'right', 'really', 'going', 'know', 'gonna', 'wanna', 'yeah', 'okay',
-    'yes', 'hey', 'oh', 'uh', 'um', 'ah', 'well', 'just', 'actually', 'basically',
-    # Sermon/Bible structure words (not thematic)
-    'amen', 'chapter', 'verse', 'verses', 'book', 'passage', 'text', 'scripture',
-    'says', 'saying', 'word', 'words', 'today', 'tonight', 'morning', 'evening',
-    'week', 'last', 'next', 'year', 'years', 'day', 'days', 'night', 'nights',
-    # Archaic pronouns (often misclassified as nouns)
-    'thy', 'thee', 'thou', 'thine', 'ye', 'hath', 'doth', 'art', 'shalt', 'wilt',
-    # Generic verbs that don't make good tags
-    'provided', 'recounting', 'talking', 'speaking', 'reading', 'looking',
-    'started', 'beginning', 'ended', 'ending', 'continued', 'continuing',
-    'remember', 'mentioned', 'stated', 'written', 'found', 'given', 'taken',
-    # Common religious verbs (use noun forms instead)
-    'pray', 'praying', 'prayed', 'worship', 'worshipping', 'worshiped',
-    'serve', 'serving', 'served', 'believe', 'believing', 'believed',
-    'love', 'loving', 'loved', 'give', 'giving', 'gave', 'trust', 'trusting',
-    'bless', 'blessing', 'blessed', 'save', 'saving', 'saved', 'redeem',
-    'forgive', 'forgiving', 'forgave', 'praise', 'praising', 'praised',
-}
-
-# Bible book names (these should be in scripture references, not tags)
-BIBLE_BOOK_NAMES = {
-    'genesis', 'exodus', 'leviticus', 'numbers', 'deuteronomy', 'joshua', 'judges',
-    'ruth', 'samuel', 'kings', 'chronicles', 'ezra', 'nehemiah', 'esther', 'job',
-    'psalms', 'psalm', 'proverbs', 'ecclesiastes', 'song', 'isaiah', 'jeremiah',
-    'lamentations', 'ezekiel', 'daniel', 'hosea', 'joel', 'amos', 'obadiah', 'jonah',
-    'micah', 'nahum', 'habakkuk', 'zephaniah', 'haggai', 'zechariah', 'malachi',
-    'matthew', 'mark', 'luke', 'john', 'acts', 'romans', 'corinthians', 'galatians',
-    'ephesians', 'philippians', 'colossians', 'thessalonians', 'timothy', 'titus',
-    'philemon', 'hebrews', 'james', 'peter', 'jude', 'revelation', 'revelations',
-}
-
 def transcribe_audio(file_path: str) -> str:
     print("Transcribing audio...")
-    # Use medium model for good speed-accuracy balance
-    model = whisper.load_model("medium", device=device)
+    # Use mlx-whisper with medium model for good speed-accuracy balance
+    model_repo = "mlx-community/whisper-medium-mlx"
     
-    # Use FP16 on MPS for faster processing
-    if device == "mps":
-        print("✓ Whisper using Apple Silicon GPU")
+    print("✓ Using Apple Silicon GPU via MLX")
     
     # Balanced parameters optimized for long files
     # IMPORTANT: no_speech_threshold is set to None to prevent skipping audio segments.
     # With a threshold like 0.6, Whisper can skip 10-30+ seconds of audio if it detects
     # "silence" (which may actually be soft speech, background music, or pauses).
     # For sermon transcription, we want ALL audio transcribed, even quiet parts.
-    result = model.transcribe(
+    result = mlx_whisper.transcribe(
         file_path,
+        path_or_hf_repo=model_repo,
         language="en",  # Specify language for better accuracy
         temperature=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0),  # Temperature fallback to avoid hallucinations
         compression_ratio_threshold=2.4,  # Detect repetitions
@@ -452,7 +345,7 @@ def transcribe_audio(file_path: str) -> str:
         no_speech_threshold=None,  # DISABLED - prevents skipping audio segments
         condition_on_previous_text=True,  # Use context from previous segments
         verbose=True,  # Show progress for long files
-        fp16=True,
+        fp16=True,  # MLX natively supports fp16 on Apple Silicon
         initial_prompt="This is a clear audio recording of speech."  # Help model recognize speech
     )
     print("Finished transcribing!")
@@ -576,10 +469,14 @@ def convert_to_markdown(transcript: str, quote_boundaries: Optional[List[QuoteBo
 
 def segment_into_paragraphs(text: str, quote_boundaries: Optional[List[QuoteBoundary]] = None, 
                             min_sentences_per_paragraph: int = 8, 
-                            similarity_threshold: float = 0.65, 
+                            similarity_threshold: float = 0.55, 
                             window_size: int = 3) -> str:
     """
     Intelligently segment text into paragraphs based on semantic similarity.
+    
+    Uses EmbeddingGemma-300m-4bit (768-dim) for sentence embeddings.
+    The threshold was calibrated from 0.65 (MiniLM 384-dim) to 0.55 for the
+    new model's higher-quality similarity distributions.
     Optimized for rambling speech like sermons - avoids over-segmentation.
     
     IMPORTANT: This function ensures Bible quotes are never split across paragraphs.
@@ -707,9 +604,10 @@ def segment_into_paragraphs(text: str, quote_boundaries: Optional[List[QuoteBoun
             multi_sent_quotes = sum(1 for start, end in quote_ranges if end > start)
             print(f"   {multi_sent_quotes} quotes span multiple sentences (will keep together)")
     
-    # Get embeddings for all sentences
+    # Get embeddings for all sentences using unified EmbeddingGemma model (768-dim)
+    # Task: semantic_similarity for paragraph boundary detection
     print(f"Analyzing {len(sentences)} sentences...")
-    embeddings = semantic_model.encode(sentences, convert_to_numpy=True)
+    embeddings = encode_texts(sentences, task="semantic_similarity")
     
     # Calculate cosine similarities between consecutive sentences
     similarities = []
@@ -816,68 +714,21 @@ def segment_into_paragraphs(text: str, quote_boundaries: Optional[List[QuoteBoun
     return '\n\n'.join(paragraphs)
 
 
-def compute_religious_embedding() -> np.ndarray:
-    """
-    Compute the average embedding of religious seed concepts.
-    This embedding represents the semantic 'center' of Christian religious themes.
-    """
-    global religious_embedding, tag_model
-    
-    if religious_embedding is not None:
-        return religious_embedding
-    
-    # Ensure tag model is loaded
-    if tag_model is None:
-        tag_model = SentenceTransformer(TAG_MODEL_NAME)
-        if device == "mps":
-            tag_model = tag_model.to(device)
-    
-    # Encode all seed concepts and compute their centroid
-    embeddings = tag_model.encode(RELIGIOUS_SEED_CONCEPTS)
-    religious_embedding = np.mean(embeddings, axis=0)
-    return religious_embedding
-
-
-def get_religious_relevance(word: str, religious_emb: np.ndarray) -> float:
-    """
-    Compute cosine similarity between a word and the religious concepts embedding.
-    Higher values indicate the word is more related to Christian religious themes.
-    
-    Args:
-        word: The keyword to evaluate
-        religious_emb: The pre-computed religious concepts embedding
-    
-    Returns:
-        Cosine similarity score between 0 and 1
-    """
-    global tag_model
-    if tag_model is None:
-        return 0.0
-    word_emb = tag_model.encode([word])[0]
-    similarity = np.dot(word_emb, religious_emb) / (np.linalg.norm(word_emb) * np.linalg.norm(religious_emb))
-    return float(similarity)
-
-
 def compute_concept_embeddings() -> tuple:
     """
     Compute embeddings for all theological concepts in the knowledge base.
+    Uses EmbeddingGemma-300m via mlx-embeddings with "classification" task prefix.
     This is done once and cached for fast semantic matching.
     
     Returns:
         Tuple of (concept_names: List[str], embeddings: np.ndarray)
         concept_names are the clean concept names (before " - ")
-        embeddings are the full concept embeddings (including descriptions)
+        embeddings are the full concept embeddings (768-dim, including descriptions)
     """
-    global theological_concept_embeddings, theological_concept_names, tag_model
+    global theological_concept_embeddings, theological_concept_names
     
     if theological_concept_embeddings is not None:
         return theological_concept_names, theological_concept_embeddings
-    
-    # Ensure tag model is loaded
-    if tag_model is None:
-        tag_model = SentenceTransformer(TAG_MODEL_NAME)
-        if device == "mps":
-            tag_model = tag_model.to(device)
     
     # Extract clean concept names (before " - ") for display
     # But embed the full description for better semantic matching
@@ -888,7 +739,8 @@ def compute_concept_embeddings() -> tuple:
         theological_concept_names.append(name)
     
     # Encode the FULL concepts (including descriptions) for better semantic matching
-    theological_concept_embeddings = tag_model.encode(THEOLOGICAL_CONCEPTS_KB)
+    # Uses "classification" task prefix for theme matching
+    theological_concept_embeddings = encode_texts(THEOLOGICAL_CONCEPTS_KB, task="classification")
     
     return theological_concept_names, theological_concept_embeddings
 
@@ -942,16 +794,6 @@ def get_semantic_themes(text: str, top_k: int = 15, min_similarity: float = 0.35
     Returns:
         List of (concept_name, similarity_score) tuples, sorted by score descending
     """
-    global tag_model
-    
-    # Ensure model is loaded
-    if tag_model is None:
-        if verbose:
-            print(f"   Loading semantic model ({TAG_MODEL_NAME})...")
-        tag_model = SentenceTransformer(TAG_MODEL_NAME)
-        if device == "mps":
-            tag_model = tag_model.to(device)
-    
     # Get concept embeddings (cached)
     if verbose:
         print("   Loading theological concepts knowledge base...")
@@ -966,10 +808,10 @@ def get_semantic_themes(text: str, top_k: int = 15, min_similarity: float = 0.35
     if verbose:
         print(f"   Created {len(chunks)} text chunks")
     
-    # Embed all chunks
+    # Embed all chunks using EmbeddingGemma with "classification" task prefix
     if verbose:
         print("   Computing text embeddings...")
-    chunk_embeddings = tag_model.encode(chunks)
+    chunk_embeddings = encode_texts(chunks, task="classification")
     
     # Create a combined sermon embedding (average of chunks)
     sermon_embedding = np.mean(chunk_embeddings, axis=0)
@@ -1027,95 +869,30 @@ def get_semantic_themes(text: str, top_k: int = 15, min_similarity: float = 0.35
     return unique_results
 
 
-def is_noun(word: str) -> bool:
-    """
-    Check if a word is a noun using NLTK part-of-speech tagging.
-    Returns True for nouns (NN, NNS, NNP, NNPS).
-    """
-    if not NLTK_AVAILABLE:
-        return True  # If NLTK not available, don't filter
-    
-    try:
-        # POS tag the word in isolation
-        tagged = pos_tag([word])
-        if tagged:
-            pos = tagged[0][1]
-            # NN=singular noun, NNS=plural noun, NNP=proper noun, NNPS=plural proper noun
-            return pos.startswith('NN')
-        return False
-    except Exception:
-        return True  # On error, don't filter
-
-
-def extract_nouns_from_text(text: str) -> set:
-    """
-    Extract all unique nouns from the text using NLTK POS tagging.
-    This is used to pre-filter candidates for KeyBERT so only nouns are considered.
-    
-    Args:
-        text: The text to extract nouns from
-        
-    Returns:
-        Set of unique noun words (lowercase)
-    """
-    if not NLTK_AVAILABLE:
-        return set()  # Return empty set if NLTK not available
-    
-    try:
-        # Tokenize and POS tag the entire text
-        tokens = word_tokenize(text.lower())
-        tagged = pos_tag(tokens)
-        
-        # Extract words tagged as nouns
-        nouns = set()
-        for word, pos in tagged:
-            # NN=singular noun, NNS=plural noun, NNP=proper noun, NNPS=plural proper noun
-            if pos.startswith('NN') and len(word) >= 3 and word.isalpha():
-                nouns.add(word)
-        
-        return nouns
-    except Exception:
-        return set()
-
-
 def extract_tags(text: str, quote_boundaries: Optional[List[QuoteBoundary]] = None,
-                 min_occurrences: int = 3, min_keybert_score: float = 0.15,
-                 min_religious_relevance: float = 0.35, max_tags: int = 10, 
-                 nouns_only: bool = True, verbose: bool = True,
+                 max_tags: int = 10, verbose: bool = True,
                  use_semantic_inference: bool = True, semantic_threshold: float = 0.40) -> List[str]:
     """
-    Extract tags from a Christian sermon transcript using a hybrid approach:
+    Extract tags from a Christian sermon transcript using semantic theme inference.
     
-    1. SEMANTIC INFERENCE (primary): Infers what the sermon is ABOUT by comparing
-       its embedding against a comprehensive theological concepts knowledge base.
-       This finds themes like "Discipleship" from a sermon about "following Jesus"
-       even if the word "Discipleship" never appears.
+    Infers what the sermon is ABOUT by comparing its embedding against a
+    comprehensive theological concepts knowledge base (~200 concepts).
+    This finds themes like "Discipleship" from a sermon about "following Jesus"
+    even if the word "Discipleship" never appears.
     
-    2. EXPLICIT EXTRACTION (secondary): Uses KeyBERT to find religiously-relevant
-       keywords that actually appear in the text. These supplement the semantic
-       themes with sermon-specific vocabulary.
-    
-    The semantic inference approach is NOT a restrictive "allowed tags" list.
-    It's a semantic knowledge base that enables the system to understand what
-    concepts the sermon RELATES TO, not just what words it CONTAINS.
+    Uses EmbeddingGemma-300m-4bit via mlx-embeddings for all embeddings.
     
     Args:
         text: The transcript text (with or without paragraphs)
         quote_boundaries: Quote boundaries to exclude quoted Bible text from analysis
-        min_occurrences: Minimum times a word must appear (for explicit extraction)
-        min_keybert_score: Minimum KeyBERT relevance score (for explicit extraction)
-        min_religious_relevance: Minimum cosine similarity to religious concepts
         max_tags: Maximum number of tags to return (default: 10)
-        nouns_only: Extract only nouns as candidates for explicit extraction
         verbose: Whether to print progress messages
         use_semantic_inference: Use semantic theme inference (default: True)
         semantic_threshold: Minimum similarity for semantic themes (default: 0.40)
     
     Returns:
-        List of tag strings combining semantic themes and explicit keywords
+        List of tag strings from semantic theme inference
     """
-    global tag_model, religious_embedding
-    
     final_tags = []
     
     # Remove Bible quotes from the text to avoid extracting quoted scripture phrases
@@ -1128,8 +905,8 @@ def extract_tags(text: str, quote_boundaries: Optional[List[QuoteBoundary]] = No
             print(f"   Excluded {len(quote_boundaries)} Bible quotes from analysis")
     
     # =========================================================================
-    # STEP 1: SEMANTIC THEME INFERENCE
-    # This finds concepts the sermon is ABOUT, not just words it contains
+    # SEMANTIC THEME INFERENCE (sole tag extraction method)
+    # Uses EmbeddingGemma-300m to find concepts the sermon is ABOUT
     # =========================================================================
     if use_semantic_inference:
         if verbose:
@@ -1138,12 +915,12 @@ def extract_tags(text: str, quote_boundaries: Optional[List[QuoteBoundary]] = No
         try:
             semantic_themes = get_semantic_themes(
                 clean_text, 
-                top_k=max_tags,  # Get up to max_tags semantic themes
+                top_k=max_tags,
                 min_similarity=semantic_threshold,
                 verbose=verbose
             )
             
-            # Add semantic themes to final tags (these are primary)
+            # Add semantic themes to final tags
             for theme_name, score in semantic_themes:
                 if theme_name not in final_tags:
                     final_tags.append(theme_name)
@@ -1154,119 +931,6 @@ def extract_tags(text: str, quote_boundaries: Optional[List[QuoteBoundary]] = No
         except Exception as e:
             if verbose:
                 print(f"   ⚠️  Semantic inference error: {str(e)}")
-    
-    # =========================================================================
-    # STEP 2: EXPLICIT KEYWORD EXTRACTION (supplement semantic themes)
-    # This finds specific words that appear frequently in the sermon
-    # =========================================================================
-    if len(final_tags) < max_tags and KEYBERT_AVAILABLE:
-        if verbose:
-            print("\n   🔍 EXPLICIT EXTRACTION: What words appear in this sermon?")
-        
-        try:
-            # Load the high-quality model on first use
-            if tag_model is None:
-                if verbose:
-                    print(f"   Loading semantic model ({TAG_MODEL_NAME})...")
-                tag_model = SentenceTransformer(TAG_MODEL_NAME)
-                if device == "mps":
-                    tag_model = tag_model.to(device)
-                    if verbose:
-                        print(f"   ✓ Model loaded on GPU")
-            
-            # Compute religious concepts embedding (cached after first call)
-            religious_emb = compute_religious_embedding()
-            
-            kw_model = KeyBERT(model=tag_model)  # type: ignore[arg-type]
-            
-            # Pre-extract nouns from the text if nouns_only is enabled
-            noun_candidates = None
-            if nouns_only and NLTK_AVAILABLE:
-                all_nouns = extract_nouns_from_text(clean_text)
-                
-                # Filter out stop words and Bible book names from nouns
-                noun_candidates = [
-                    noun for noun in all_nouns 
-                    if noun not in COMMON_STOP_WORDS and noun not in BIBLE_BOOK_NAMES
-                ]
-                
-                if verbose:
-                    print(f"   Found {len(noun_candidates)} unique nouns as candidates")
-            
-            # Extract keywords
-            if noun_candidates:
-                keywords = kw_model.extract_keywords(
-                    clean_text,
-                    candidates=noun_candidates,
-                    top_n=min(100, len(noun_candidates)),
-                    use_mmr=True,
-                    diversity=0.5,
-                )
-            else:
-                keywords = kw_model.extract_keywords(
-                    clean_text,
-                    keyphrase_ngram_range=(1, 1),
-                    stop_words='english',
-                    top_n=100,
-                    use_mmr=True,
-                    diversity=0.5,
-                )
-            
-            # Filter keywords and add to tags (avoid duplicating semantic themes)
-            explicit_candidates = []
-            for kw_item in keywords:
-                keyword = str(kw_item[0])
-                keybert_score = float(kw_item[1])  # type: ignore[arg-type]
-                word = keyword.lower().strip()
-                
-                # Skip if already covered by semantic themes (case-insensitive check)
-                if any(word in theme.lower() or theme.lower() in word for theme in final_tags):
-                    continue
-                
-                # Skip basic filters
-                if len(word) < 3 or word in COMMON_STOP_WORDS or word in BIBLE_BOOK_NAMES:
-                    continue
-                
-                if keybert_score < min_keybert_score:
-                    continue
-                
-                # Count occurrences in text
-                pattern = r'\b' + re.escape(word) + r'\b'
-                count = len(re.findall(pattern, clean_text, re.IGNORECASE))
-                if count < min_occurrences:
-                    continue
-                
-                # Compute religious relevance
-                religious_score = get_religious_relevance(word, religious_emb)
-                
-                if religious_score >= min_religious_relevance:
-                    explicit_candidates.append({
-                        'word': word.title(),
-                        'keybert_score': keybert_score,
-                        'religious_score': religious_score,
-                        'occurrences': count,
-                        'combined_score': religious_score * 0.5 + keybert_score * 0.3 + min(count / 20, 0.2)
-                    })
-            
-            # Sort and add best explicit keywords
-            explicit_candidates.sort(key=lambda x: x['combined_score'], reverse=True)
-            
-            added_explicit = 0
-            for candidate in explicit_candidates:
-                if len(final_tags) >= max_tags:
-                    break
-                # Final check: not similar to existing tags
-                if not any(candidate['word'].lower() in tag.lower() or tag.lower() in candidate['word'].lower() 
-                          for tag in final_tags):
-                    final_tags.append(candidate['word'])
-                    added_explicit += 1
-            
-            if verbose and added_explicit > 0:
-                print(f"   ✓ Added {added_explicit} explicit keywords to supplement themes")
-                
-        except Exception as e:
-            if verbose:
-                print(f"   ⚠️  Explicit extraction error: {str(e)}")
     
     if verbose:
         print(f"\n   ✅ Final tag set: {len(final_tags)} tags")
@@ -1337,7 +1001,7 @@ if __name__ == "__main__":
         with_quotes,
         quote_boundaries=quote_boundaries,
         min_sentences_per_paragraph=5,  # At least 5 sentences per paragraph
-        similarity_threshold=0.30,  # Break on topic shifts (below mean similarity)
+        similarity_threshold=0.45,  # EmbeddingGemma-300m: calibrated for ~15 paragraphs per sermon
         window_size=3  # Smooth detection over 3 sentence transitions
     )
     
@@ -1417,6 +1081,6 @@ if __name__ == "__main__":
     if tags:
         print(f"  6. ✓ Keyword tags extracted ({len(tags)} tags)")
     else:
-        print("  6. ⚠️  Tag extraction skipped (KeyBERT not available)")
+        print("  6. ⚠️  Tag extraction returned no tags")
     print("  7. ✓ Markdown conversion (final.md)")
     print("=" * 70)

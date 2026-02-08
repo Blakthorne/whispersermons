@@ -1,10 +1,10 @@
 /**
  * TranscriptionSettings Component
- * 
+ *
  * The Transcription tab content for the Preferences dialog.
  * Redesigned with progressive disclosure - shows essential settings by default,
  * with advanced options hidden behind an expandable section.
- * 
+ *
  * UX Principles Applied:
  * - Progressive Disclosure: Hide advanced features initially
  * - Hick's Law: Minimize visible choices
@@ -12,12 +12,14 @@
  * - Cognitive Load Reduction: Tooltips instead of inline help text
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { HelpCircle, ChevronDown, RotateCcw, Info } from 'lucide-react';
 import { Button } from '../../../../components/ui';
 import { useAppPreferences } from '../../../../contexts';
 import { TEMPERATURE_PRESETS, SETTINGS_HELP } from '../../constants';
 import type { WhisperAdvancedSettings } from '../../types';
+import type { GpuInfo } from '../../../../types';
+import { getGpuStatus, logger } from '../../../../services';
 import './TranscriptionSettings.css';
 
 // Helper to format temperature for display
@@ -58,11 +60,13 @@ function ToggleRow({
   helpText,
   isActive,
   onToggle,
+  isDisabled = false,
 }: {
   label: string;
   helpText: string;
   isActive: boolean;
   onToggle: () => void;
+  isDisabled?: boolean;
 }): React.JSX.Element {
   return (
     <div className="settings-row-inline">
@@ -74,9 +78,11 @@ function ToggleRow({
         type="button"
         role="switch"
         aria-checked={isActive}
+        aria-disabled={isDisabled}
         aria-label={label}
-        className={`toggle-switch ${isActive ? 'active' : ''}`}
+        className={`toggle-switch ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}`}
         onClick={onToggle}
+        disabled={isDisabled}
       >
         <span className="toggle-switch-handle" />
       </button>
@@ -87,10 +93,12 @@ function ToggleRow({
 function TranscriptionSettings(): React.JSX.Element {
   const { preferences, updateWhisperSettings, resetWhisperSettings } = useAppPreferences();
   const settings = preferences.whisper;
-  
+  const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null);
+  const [gpuInfoLoaded, setGpuInfoLoaded] = useState(false);
+
   // Advanced section collapsed by default (progressive disclosure)
   const [showAdvanced, setShowAdvanced] = useState(false);
-  
+
   // Handler for updating a single setting
   const handleChange = useCallback(
     <K extends keyof WhisperAdvancedSettings>(key: K, value: WhisperAdvancedSettings[K]) => {
@@ -98,18 +106,26 @@ function TranscriptionSettings(): React.JSX.Element {
     },
     [updateWhisperSettings]
   );
-  
+
   // Toggle for boolean settings
   const handleToggle = useCallback(
     (key: keyof WhisperAdvancedSettings) => {
+      if (key === 'fp16' && gpuInfoLoaded) {
+        // fp16 works on Apple Silicon via MLX and on CUDA GPUs
+        const canUseFp16 =
+          gpuInfo?.available && (gpuInfo.type === 'metal' || gpuInfo.type === 'cuda');
+        if (!canUseFp16) {
+          return;
+        }
+      }
       const currentValue = settings[key];
       if (typeof currentValue === 'boolean') {
         updateWhisperSettings({ [key]: !currentValue });
       }
     },
-    [settings, updateWhisperSettings]
+    [settings, updateWhisperSettings, gpuInfo, gpuInfoLoaded]
   );
-  
+
   // Handler for nullable number inputs
   const handleNullableNumber = useCallback(
     (key: keyof WhisperAdvancedSettings, value: string, isEnabled: boolean) => {
@@ -125,21 +141,64 @@ function TranscriptionSettings(): React.JSX.Element {
     [updateWhisperSettings]
   );
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadGpuInfo = async (): Promise<void> => {
+      try {
+        const gpu = await getGpuStatus();
+        if (isMounted) {
+          setGpuInfo(gpu);
+        }
+      } catch (error) {
+        logger.error('Failed to load GPU status for preferences', error);
+      } finally {
+        if (isMounted) {
+          setGpuInfoLoaded(true);
+        }
+      }
+    };
+
+    loadGpuInfo();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // fp16 works natively on Apple Silicon via MLX and on CUDA GPUs
+  const canUseFp16 = gpuInfo?.available && (gpuInfo.type === 'metal' || gpuInfo.type === 'cuda');
+  const fp16DisabledReason = !gpuInfoLoaded
+    ? 'Checking GPU capabilities...'
+    : canUseFp16
+      ? ''
+      : 'Requires a GPU (Apple Silicon or CUDA).';
+  const fp16HelpText = fp16DisabledReason
+    ? `${SETTINGS_HELP.fp16} ${fp16DisabledReason}`
+    : SETTINGS_HELP.fp16;
+  const fp16ToggleDisabled = !canUseFp16;
+
+  useEffect(() => {
+    if (gpuInfoLoaded && fp16ToggleDisabled && settings.fp16) {
+      updateWhisperSettings({ fp16: false });
+    }
+  }, [gpuInfoLoaded, fp16ToggleDisabled, settings.fp16, updateWhisperSettings]);
+
   return (
     <div className="transcription-settings">
       {/* Intro Message */}
       <div className="settings-intro">
         <Info size={16} className="settings-intro-icon" />
         <p>
-          Default settings work well for most recordings. 
-          Adjust only if you experience quality issues.
+          Default settings work well for most recordings. Adjust only if you experience quality
+          issues.
         </p>
       </div>
-      
+
       {/* Essential Settings - Always visible */}
       <div className="settings-group">
         <h3 className="settings-group-title">Transcription Options</h3>
-        
+
         {/* Initial Prompt */}
         <div className="settings-row">
           <div className="settings-label-row">
@@ -157,7 +216,7 @@ function TranscriptionSettings(): React.JSX.Element {
             rows={2}
           />
         </div>
-        
+
         {/* Temperature - Simplified */}
         <div className="settings-row">
           <div className="settings-label-row">
@@ -179,7 +238,7 @@ function TranscriptionSettings(): React.JSX.Element {
             ))}
           </select>
         </div>
-        
+
         {/* Toggle Settings */}
         <ToggleRow
           label="Use Previous Context"
@@ -187,7 +246,7 @@ function TranscriptionSettings(): React.JSX.Element {
           isActive={settings.conditionOnPreviousText}
           onToggle={() => handleToggle('conditionOnPreviousText')}
         />
-        
+
         <ToggleRow
           label="Word-Level Timestamps"
           helpText={SETTINGS_HELP.wordTimestamps}
@@ -195,7 +254,7 @@ function TranscriptionSettings(): React.JSX.Element {
           onToggle={() => handleToggle('wordTimestamps')}
         />
       </div>
-      
+
       {/* Advanced Settings - Hidden by default */}
       <div className="settings-group settings-group-advanced">
         <button
@@ -207,22 +266,22 @@ function TranscriptionSettings(): React.JSX.Element {
           <div className="settings-group-header-left">
             <h3 className="settings-group-title">Advanced Settings</h3>
           </div>
-          <ChevronDown 
-            size={18} 
+          <ChevronDown
+            size={18}
             className={`settings-collapse-icon ${showAdvanced ? 'expanded' : ''}`}
           />
         </button>
-        
+
         {showAdvanced && (
           <div className="settings-group-content">
             <p className="settings-group-description">
               These settings are for fine-tuning. Only change them if you understand their effects.
             </p>
-            
+
             {/* Quality Thresholds */}
             <div className="settings-subgroup">
               <h4 className="settings-subgroup-title">Quality Thresholds</h4>
-              
+
               <div className="settings-row-compact">
                 <div className="settings-label-row">
                   <label htmlFor="compressionRatio" className="settings-label-text">
@@ -235,13 +294,15 @@ function TranscriptionSettings(): React.JSX.Element {
                   type="number"
                   className="settings-input-number"
                   value={settings.compressionRatioThreshold}
-                  onChange={(e) => handleChange('compressionRatioThreshold', parseFloat(e.target.value) || 2.4)}
+                  onChange={(e) =>
+                    handleChange('compressionRatioThreshold', parseFloat(e.target.value) || 2.4)
+                  }
                   step="0.1"
                   min="0"
                   max="10"
                 />
               </div>
-              
+
               <div className="settings-row-compact">
                 <div className="settings-label-row">
                   <label htmlFor="logProb" className="settings-label-text">
@@ -254,12 +315,14 @@ function TranscriptionSettings(): React.JSX.Element {
                   type="number"
                   className="settings-input-number"
                   value={settings.logprobThreshold}
-                  onChange={(e) => handleChange('logprobThreshold', parseFloat(e.target.value) || -1.0)}
+                  onChange={(e) =>
+                    handleChange('logprobThreshold', parseFloat(e.target.value) || -1.0)
+                  }
                   step="0.1"
                   max="0"
                 />
               </div>
-              
+
               {/* Silence Detection - Optional */}
               <div className="settings-row-optional">
                 <div className="settings-label-row">
@@ -268,7 +331,9 @@ function TranscriptionSettings(): React.JSX.Element {
                     id="noSpeechEnabled"
                     className="settings-checkbox"
                     checked={settings.noSpeechThreshold !== null}
-                    onChange={(e) => handleNullableNumber('noSpeechThreshold', '0.6', e.target.checked)}
+                    onChange={(e) =>
+                      handleNullableNumber('noSpeechThreshold', '0.6', e.target.checked)
+                    }
                   />
                   <label htmlFor="noSpeechEnabled" className="settings-label-text">
                     Silence Detection
@@ -288,29 +353,11 @@ function TranscriptionSettings(): React.JSX.Element {
                 />
               </div>
             </div>
-            
-            {/* Beam Search Settings */}
+
+            {/* Sampling Parameters */}
             <div className="settings-subgroup">
-              <h4 className="settings-subgroup-title">Search Parameters</h4>
-              
-              <div className="settings-row-compact">
-                <div className="settings-label-row">
-                  <label htmlFor="beamSize" className="settings-label-text">
-                    Beam Size
-                  </label>
-                  <Tooltip content={SETTINGS_HELP.beamSize} />
-                </div>
-                <input
-                  id="beamSize"
-                  type="number"
-                  className="settings-input-number"
-                  value={settings.beamSize}
-                  onChange={(e) => handleChange('beamSize', parseInt(e.target.value, 10) || 5)}
-                  min="1"
-                  max="10"
-                />
-              </div>
-              
+              <h4 className="settings-subgroup-title">Sampling Parameters</h4>
+
               <div className="settings-row-compact">
                 <div className="settings-label-row">
                   <label htmlFor="bestOf" className="settings-label-text">
@@ -328,46 +375,20 @@ function TranscriptionSettings(): React.JSX.Element {
                   max="10"
                 />
               </div>
-              
-              {/* Patience - Optional */}
-              <div className="settings-row-optional">
-                <div className="settings-label-row">
-                  <input
-                    type="checkbox"
-                    id="patienceEnabled"
-                    className="settings-checkbox"
-                    checked={settings.patience !== null}
-                    onChange={(e) => handleNullableNumber('patience', '1.0', e.target.checked)}
-                  />
-                  <label htmlFor="patienceEnabled" className="settings-label-text">
-                    Beam Search Patience
-                  </label>
-                  <Tooltip content={SETTINGS_HELP.patience} />
-                </div>
-                <input
-                  type="number"
-                  className="settings-input-number"
-                  value={settings.patience ?? 1.0}
-                  onChange={(e) => handleChange('patience', parseFloat(e.target.value))}
-                  step="0.1"
-                  min="0"
-                  disabled={settings.patience === null}
-                  aria-label="Patience factor value"
-                />
-              </div>
             </div>
-            
+
             {/* Performance Settings */}
             <div className="settings-subgroup">
               <h4 className="settings-subgroup-title">Performance</h4>
-              
+
               <ToggleRow
                 label="Half Precision (FP16)"
-                helpText={SETTINGS_HELP.fp16}
+                helpText={fp16HelpText}
                 isActive={settings.fp16}
                 onToggle={() => handleToggle('fp16')}
+                isDisabled={fp16ToggleDisabled}
               />
-              
+
               {/* Hallucination Detection - Optional */}
               <div className="settings-row-optional">
                 <div className="settings-label-row">
@@ -376,7 +397,9 @@ function TranscriptionSettings(): React.JSX.Element {
                     id="hallucinationEnabled"
                     className="settings-checkbox"
                     checked={settings.hallucinationSilenceThreshold !== null}
-                    onChange={(e) => handleNullableNumber('hallucinationSilenceThreshold', '0.5', e.target.checked)}
+                    onChange={(e) =>
+                      handleNullableNumber('hallucinationSilenceThreshold', '0.5', e.target.checked)
+                    }
                   />
                   <label htmlFor="hallucinationEnabled" className="settings-label-text">
                     Hallucination Detection
@@ -387,7 +410,9 @@ function TranscriptionSettings(): React.JSX.Element {
                   type="number"
                   className="settings-input-number"
                   value={settings.hallucinationSilenceThreshold ?? 0.5}
-                  onChange={(e) => handleChange('hallucinationSilenceThreshold', parseFloat(e.target.value))}
+                  onChange={(e) =>
+                    handleChange('hallucinationSilenceThreshold', parseFloat(e.target.value))
+                  }
                   step="0.1"
                   min="0"
                   disabled={settings.hallucinationSilenceThreshold === null}
@@ -398,14 +423,10 @@ function TranscriptionSettings(): React.JSX.Element {
           </div>
         )}
       </div>
-      
+
       {/* Footer Actions */}
       <div className="settings-footer">
-        <Button
-          variant="secondary"
-          icon={<RotateCcw size={14} />}
-          onClick={resetWhisperSettings}
-        >
+        <Button variant="secondary" icon={<RotateCcw size={14} />} onClick={resetWhisperSettings}>
           Reset to Defaults
         </Button>
       </div>

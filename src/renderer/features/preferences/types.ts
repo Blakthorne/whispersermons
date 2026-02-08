@@ -9,7 +9,8 @@
  * Advanced Whisper transcription settings that can be configured
  * in the Preferences dialog.
  * 
- * @see https://github.com/openai/whisper/blob/main/whisper/transcribe.py
+ * Uses mlx-whisper for Apple Silicon optimized transcription.
+ * @see https://github.com/ml-explore/mlx-examples/tree/main/whisper
  */
 export interface WhisperAdvancedSettings {
   /**
@@ -17,13 +18,13 @@ export interface WhisperAdvancedSettings {
    * Can be a single value or a tuple for temperature fallback cascade.
    * Default: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0] (fallback cascade)
    * 
-   * When temperature is 0, beam search is used. When > 0, sampling is used.
+   * When temperature is 0, greedy decoding is used. When > 0, sampling is used.
    */
   temperature: number | number[];
 
   /**
    * Number of beams for beam search (used when temperature=0).
-   * Higher values may improve accuracy but are slower.
+   * NOTE: Not currently implemented in mlx-whisper. Kept for compatibility.
    * Default: 5
    */
   beamSize: number;
@@ -36,6 +37,7 @@ export interface WhisperAdvancedSettings {
 
   /**
    * Optional patience value for beam decoding.
+   * NOTE: Requires beam search which is not implemented in mlx-whisper.
    * Default: null (disabled)
    */
   patience: number | null;
@@ -81,9 +83,9 @@ export interface WhisperAdvancedSettings {
   initialPrompt: string;
 
   /**
-   * Whether to use half-precision (FP16) on GPU.
-   * Faster and uses less memory on MPS/CUDA.
-   * Default: true for GPU, false for CPU
+   * Whether to use half-precision (FP16) on Apple Silicon GPU.
+   * MLX natively supports fp16 on Apple Silicon for faster processing.
+   * Default: true
    */
   fp16: boolean;
 

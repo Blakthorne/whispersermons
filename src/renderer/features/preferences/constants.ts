@@ -3,6 +3,7 @@
  * 
  * Default values for Whisper transcription settings matching the
  * hardcoded values in whisper_bridge.py.
+ * Uses mlx-whisper for Apple Silicon optimized transcription.
  */
 
 import type { WhisperAdvancedSettings, AppPreferences } from './types';
@@ -10,15 +11,16 @@ import type { WhisperAdvancedSettings, AppPreferences } from './types';
 /**
  * Default Whisper advanced settings
  * These match the hardcoded values in src/python/whisper_bridge.py
+ * Optimized for mlx-whisper on Apple Silicon
  */
 export const DEFAULT_WHISPER_SETTINGS: WhisperAdvancedSettings = {
   // Temperature fallback cascade for sampling
   temperature: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
   
-  // Beam search parameters
-  beamSize: 5,
+  // Search parameters (beam search not implemented in mlx-whisper)
+  beamSize: 5,  // Kept for compatibility, not used by mlx-whisper
   bestOf: 5,
-  patience: null,
+  patience: null,  // Kept for compatibility, not used by mlx-whisper
   
   // Quality control thresholds
   compressionRatioThreshold: 2.4,
@@ -30,8 +32,8 @@ export const DEFAULT_WHISPER_SETTINGS: WhisperAdvancedSettings = {
   wordTimestamps: false,
   initialPrompt: 'This is a clear audio recording of speech.',
   
-  // Performance
-  fp16: true, // Auto-enabled for GPU (MPS/CUDA)
+  // Performance - fp16 works natively on Apple Silicon via MLX
+  fp16: true,
   hallucinationSilenceThreshold: null, // Disabled by default
 };
 
@@ -90,11 +92,11 @@ export const SETTINGS_HELP: Record<keyof WhisperAdvancedSettings, string> = {
   temperature: 
     'Controls randomness in transcription. Use cascade (default) for automatic fallback, or a single value for consistent behavior.',
   beamSize: 
-    'Number of beams for beam search when temperature is 0. Higher values may improve accuracy but are slower.',
+    'Beam search is not currently supported by MLX Whisper. This setting is reserved for future use.',
   bestOf: 
     'Number of candidates to consider when sampling (temperature > 0). Higher values may improve quality.',
   patience: 
-    'Patience factor for beam search. Higher values explore more options. Leave disabled for default behavior.',
+    'Beam search patience is not currently supported by MLX Whisper. This setting is reserved for future use.',
   compressionRatioThreshold: 
     'If a segment has a gzip compression ratio above this, it may indicate repetition/failure and will be retried.',
   logprobThreshold: 
@@ -108,7 +110,7 @@ export const SETTINGS_HELP: Record<keyof WhisperAdvancedSettings, string> = {
   initialPrompt: 
     'Initial context to guide transcription. Can include punctuation style, technical terms, or speaker context.',
   fp16: 
-    'Use half-precision (16-bit float) on GPU for faster processing. Disable if you experience quality issues.',
+    'Use half-precision (16-bit float) on Apple Silicon GPU via MLX. Enabled by default for faster processing and lower memory usage.',
   hallucinationSilenceThreshold: 
     'Skip silent periods where model outputs text (hallucinations). Disabled by default.',
 };

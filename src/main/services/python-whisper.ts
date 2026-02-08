@@ -121,10 +121,12 @@ async function runPythonCommand<T>(
       return;
     }
 
+    const whisperCacheDir = getWhisperCacheDir();
     const env = {
       ...process.env,
       PYTHONUNBUFFERED: '1',
-      WHISPER_CACHE_DIR: getWhisperCacheDir(),
+      WHISPER_CACHE_DIR: whisperCacheDir,
+      HF_HOME: `${whisperCacheDir}/huggingface`,
     };
 
     const proc = spawn(pythonPath, [bridgePath], {

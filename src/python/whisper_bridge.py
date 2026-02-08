@@ -3,7 +3,7 @@
 WhisperSermons Python Bridge
 
 This module provides a JSON-based subprocess interface for the Electron app to:
-1. Transcribe audio using OpenAI Whisper
+1. Transcribe audio using mlx-whisper (Apple Silicon optimized)
 2. Process sermon transcripts (Bible quotes, paragraphs, tags)
 3. Extract audio metadata (Title, Comment for sermon mode)
 
@@ -102,16 +102,17 @@ class WhisperProgressTqdm:
         pass
 
 
-# Monkey-patch tqdm BEFORE importing whisper
+# Monkey-patch tqdm BEFORE importing mlx_whisper
 # This allows us to capture whisper's internal progress
 import tqdm as _tqdm_module
 _original_tqdm = _tqdm_module.tqdm
 _tqdm_module.tqdm = WhisperProgressTqdm
 
-# Configure model cache directory (will be set by Electron)
+# Configure HuggingFace Hub cache directory (will be set by Electron)
+# mlx-whisper uses huggingface_hub for model downloads
 WHISPER_CACHE_DIR = os.environ.get('WHISPER_CACHE_DIR', None)
 if WHISPER_CACHE_DIR:
-    os.environ['XDG_CACHE_HOME'] = WHISPER_CACHE_DIR
+    os.environ['HF_HOME'] = os.path.join(WHISPER_CACHE_DIR, 'huggingface')
 
 # ============================================================================
 # PROGRESS REPORTING
@@ -157,71 +158,51 @@ def emit_result(data: Dict[str, Any]):
 # LAZY IMPORTS (loaded on demand to improve startup time)
 # ============================================================================
 
-_whisper_model = None
-_semantic_model = None
-_tag_model = None
-_device = None
+# Unified embedding model (EmbeddingGemma-300m-4bit via mlx-embeddings)
+# Loaded lazily via embedding_model.load_model() on first use
+
+# ============================================================================
+# MLX MODEL NAME MAPPING
+# ============================================================================
+# Maps user-facing model names to HuggingFace repo IDs for mlx-community models.
+# These are pre-converted MLX format models optimized for Apple Silicon.
+
+MLX_MODEL_MAP: Dict[str, str] = {
+    'tiny': 'mlx-community/whisper-tiny',
+    'tiny.en': 'mlx-community/whisper-tiny.en-mlx',
+    'base': 'mlx-community/whisper-base-mlx',
+    'base.en': 'mlx-community/whisper-base.en-mlx',
+    'small': 'mlx-community/whisper-small-mlx',
+    'small.en': 'mlx-community/whisper-small.en-mlx',
+    'medium': 'mlx-community/whisper-medium-mlx',
+    'medium.en': 'mlx-community/whisper-medium-mlx',
+    'large': 'mlx-community/whisper-large-v3-mlx',
+    'large-v3': 'mlx-community/whisper-large-v3-mlx',
+    'large-v3-turbo': 'mlx-community/whisper-large-v3-turbo',
+    'turbo': 'mlx-community/whisper-large-v3-turbo',
+}
 
 
-def get_device():
-    """Detect and return the best available device (MPS/CUDA/CPU)."""
-    global _device
-    if _device is not None:
-        return _device
+def get_mlx_model_repo(model_name: str) -> str:
+    """Get the HuggingFace repo ID for a given model name.
     
-    import torch
-    if torch.backends.mps.is_available():
-        _device = "mps"
-    elif torch.cuda.is_available():
-        _device = "cuda"
-    else:
-        _device = "cpu"
-    return _device
-
-
-def get_whisper_model(model_name: str = "medium"):
-    """Load Whisper model (cached after first load)."""
-    global _whisper_model
+    Args:
+        model_name: User-facing model name (e.g., 'medium', 'large-v3-turbo')
     
-    # If model is already loaded with same name, return it
-    if _whisper_model is not None and hasattr(_whisper_model, '_model_name') and _whisper_model._model_name == model_name:
-        return _whisper_model
+    Returns:
+        HuggingFace repo ID for mlx-community model
+    """
+    return MLX_MODEL_MAP.get(model_name, f'mlx-community/whisper-{model_name}')
+
+
+def get_embedding_model():
+    """Load the unified embedding model (EmbeddingGemma-300m-4bit via mlx-embeddings).
     
-    import whisper
-    device = get_device()
-    emit_progress(1, "Loading Whisper model", 10, f"Loading {model_name} model...")
-    _whisper_model = whisper.load_model(model_name, device=device)
-    setattr(_whisper_model, '_model_name', model_name)  # Tag for caching
-    emit_progress(1, "Loading Whisper model", 20, f"Model loaded on {device}")
-    return _whisper_model
-
-
-def get_semantic_model():
-    """Load sentence transformer for paragraph segmentation."""
-    global _semantic_model
-    if _semantic_model is not None:
-        return _semantic_model
-    
-    from sentence_transformers import SentenceTransformer
-    device = get_device()
-    _semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
-    if device == "mps":
-        _semantic_model = _semantic_model.to(device)
-    return _semantic_model
-
-
-def get_tag_model():
-    """Load high-quality model for tag extraction."""
-    global _tag_model
-    if _tag_model is not None:
-        return _tag_model
-    
-    from sentence_transformers import SentenceTransformer
-    device = get_device()
-    _tag_model = SentenceTransformer('all-mpnet-base-v2')
-    if device == "mps":
-        _tag_model = _tag_model.to(device)
-    return _tag_model
+    Returns:
+        Tuple of (model, tokenizer) from mlx-embeddings
+    """
+    from embedding_model import load_model
+    return load_model()
 
 
 # ============================================================================
@@ -338,7 +319,10 @@ def transcribe_audio(
     advanced_settings: Optional[Dict[str, Any]] = None
 ) -> str:
     """
-    Transcribe audio using OpenAI Whisper with optimized parameters.
+    Transcribe audio using mlx-whisper (Apple Silicon optimized).
+    
+    Uses MLX framework for native Apple GPU acceleration with fp16 support.
+    Models are automatically downloaded from HuggingFace Hub.
     
     Args:
         file_path: Path to audio/video file
@@ -350,20 +334,25 @@ def transcribe_audio(
     Returns:
         Transcribed text
     """
-    model = get_whisper_model(model_name)
-    device = get_device()
+    import mlx_whisper  # type: ignore
     
+    # Map user-facing model name to HuggingFace repo ID
+    model_repo = get_mlx_model_repo(model_name)
+    
+    emit_progress(1, "Transcribing audio", 10, f"Loading {model_name} model (MLX)...")
     emit_progress(1, "Transcribing audio", 25, "Starting transcription...")
     
     # Default transcription parameters
-    transcribe_kwargs = {
+    # mlx-whisper uses fp16 by default on Apple Silicon - this is a key advantage
+    transcribe_kwargs: Dict[str, Any] = {
+        'path_or_hf_repo': model_repo,
         'temperature': (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),  # Temperature fallback cascade
         'compression_ratio_threshold': 2.4,  # Detect repetitions
         'logprob_threshold': -1.0,  # Filter low-confidence segments
         'no_speech_threshold': None,  # DISABLED - prevents skipping audio segments
         'condition_on_previous_text': True,  # Use context from previous segments
         'verbose': False,  # Enable tqdm progress bar (our custom one captures it)
-        'fp16': device in ('mps', 'cuda'),  # Half-precision on GPU
+        'fp16': True,  # Half-precision works natively on Apple Silicon via MLX
         'initial_prompt': "This is a clear audio recording of speech."
     }
     
@@ -377,13 +366,10 @@ def transcribe_audio(
             else:
                 transcribe_kwargs['temperature'] = temp
         
-        # Beam search parameters
-        if 'beamSize' in advanced_settings:
-            transcribe_kwargs['beam_size'] = advanced_settings['beamSize']
+        # Sampling parameters
+        # Note: beam_size is NOT implemented in mlx-whisper, so we skip it
         if 'bestOf' in advanced_settings:
             transcribe_kwargs['best_of'] = advanced_settings['bestOf']
-        if 'patience' in advanced_settings and advanced_settings['patience'] is not None:
-            transcribe_kwargs['patience'] = advanced_settings['patience']
         
         # Quality thresholds
         if 'compressionRatioThreshold' in advanced_settings:
@@ -401,7 +387,7 @@ def transcribe_audio(
         if 'initialPrompt' in advanced_settings:
             transcribe_kwargs['initial_prompt'] = advanced_settings['initialPrompt']
         
-        # Performance
+        # Performance - fp16 works on Apple Silicon with MLX!
         if 'fp16' in advanced_settings:
             transcribe_kwargs['fp16'] = advanced_settings['fp16']
         if 'hallucinationSilenceThreshold' in advanced_settings and advanced_settings['hallucinationSilenceThreshold'] is not None:
@@ -411,11 +397,11 @@ def transcribe_audio(
     if language and language != 'auto':
         transcribe_kwargs['language'] = language
     
-    # The progress is now tracked via our custom tqdm wrapper
-    # which automatically emits progress as Whisper processes audio frames
-    emit_progress(1, "Transcribing audio", 28, "Processing audio segments...")
+    # The progress is tracked via our custom tqdm wrapper
+    # which automatically emits progress as mlx-whisper processes audio frames
+    emit_progress(1, "Transcribing audio", 28, "Processing audio segments (MLX GPU)...")
     
-    result = model.transcribe(file_path, **transcribe_kwargs)
+    result = mlx_whisper.transcribe(file_path, **transcribe_kwargs)
     
     emit_progress(1, "Transcribing audio", 95, "Finalizing transcription...")
     emit_stage_complete(1, "Transcribing audio")
@@ -671,7 +657,7 @@ def segment_paragraphs(
     text: str,
     quote_boundaries: Optional[List[Any]] = None,
     min_sentences: int = 5,
-    similarity_threshold: float = 0.30
+    similarity_threshold: float = 0.45
 ) -> str:
     """
     Segment text into paragraphs using semantic analysis.
@@ -936,16 +922,16 @@ def handle_command(command: Dict[str, Any]) -> Dict[str, Any]:
     elif cmd == 'get_models':
         return {
             'models': [
-                {'name': 'tiny', 'size': '75 MB', 'vram': '~1 GB'},
-                {'name': 'tiny.en', 'size': '75 MB', 'vram': '~1 GB'},
-                {'name': 'base', 'size': '142 MB', 'vram': '~1 GB'},
-                {'name': 'base.en', 'size': '142 MB', 'vram': '~1 GB'},
-                {'name': 'small', 'size': '466 MB', 'vram': '~2 GB'},
-                {'name': 'small.en', 'size': '466 MB', 'vram': '~2 GB'},
-                {'name': 'medium', 'size': '1.5 GB', 'vram': '~5 GB'},
-                {'name': 'medium.en', 'size': '1.5 GB', 'vram': '~5 GB'},
-                {'name': 'large-v3', 'size': '3.1 GB', 'vram': '~10 GB'},
-                {'name': 'large-v3-turbo', 'size': '1.6 GB', 'vram': '~6 GB'},
+                {'name': 'tiny', 'size': '75 MB', 'vram': '~1 GB', 'repo': 'mlx-community/whisper-tiny'},
+                {'name': 'tiny.en', 'size': '75 MB', 'vram': '~1 GB', 'repo': 'mlx-community/whisper-tiny.en-mlx'},
+                {'name': 'base', 'size': '142 MB', 'vram': '~1 GB', 'repo': 'mlx-community/whisper-base-mlx'},
+                {'name': 'base.en', 'size': '142 MB', 'vram': '~1 GB', 'repo': 'mlx-community/whisper-base.en-mlx'},
+                {'name': 'small', 'size': '466 MB', 'vram': '~2 GB', 'repo': 'mlx-community/whisper-small-mlx'},
+                {'name': 'small.en', 'size': '466 MB', 'vram': '~2 GB', 'repo': 'mlx-community/whisper-small.en-mlx'},
+                {'name': 'medium', 'size': '1.5 GB', 'vram': '~5 GB', 'repo': 'mlx-community/whisper-medium-mlx'},
+                {'name': 'medium.en', 'size': '1.5 GB', 'vram': '~5 GB', 'repo': 'mlx-community/whisper-medium-mlx'},
+                {'name': 'large-v3', 'size': '3.1 GB', 'vram': '~10 GB', 'repo': 'mlx-community/whisper-large-v3-mlx'},
+                {'name': 'large-v3-turbo', 'size': '1.6 GB', 'vram': '~6 GB', 'repo': 'mlx-community/whisper-large-v3-turbo'},
             ]
         }
     
@@ -993,46 +979,30 @@ def handle_command(command: Dict[str, Any]) -> Dict[str, Any]:
 def check_dependencies() -> Dict[str, Any]:
     """Check if all required Python packages are installed."""
     deps: Dict[str, Any] = {
-        'torch': False,
-        'whisper': False,
-        'sentence_transformers': False,
-        'keybert': False,
-        'nltk': False,
+        'mlx_whisper': False,
+        'mlx': False,
+        'mlx_embeddings': False,
         'mutagen': False,
         'requests': False,
         'numpy': False,
     }
     
     try:
-        import torch
-        deps['torch'] = True
-        deps['torch_version'] = str(torch.__version__)
-        deps['mps_available'] = torch.backends.mps.is_available()
-        deps['cuda_available'] = torch.cuda.is_available()
+        import mlx_whisper  # type: ignore
+        deps['mlx_whisper'] = True
+        deps['mlx_whisper_version'] = str(mlx_whisper.__version__)
     except ImportError:
         pass
     
     try:
-        import whisper
-        deps['whisper'] = True
+        import mlx.core  # type: ignore
+        deps['mlx'] = True
     except ImportError:
         pass
     
     try:
-        from sentence_transformers import SentenceTransformer
-        deps['sentence_transformers'] = True
-    except ImportError:
-        pass
-    
-    try:
-        from keybert import KeyBERT
-        deps['keybert'] = True
-    except ImportError:
-        pass
-    
-    try:
-        import nltk
-        deps['nltk'] = True
+        from mlx_embeddings.utils import load  # type: ignore
+        deps['mlx_embeddings'] = True
     except ImportError:
         pass
     
@@ -1054,12 +1024,18 @@ def check_dependencies() -> Dict[str, Any]:
     except ImportError:
         pass
     
-    all_installed = all(deps.get(k, False) for k in ['torch', 'whisper', 'sentence_transformers', 'keybert', 'nltk', 'mutagen', 'requests', 'numpy'])
+    all_installed = all(deps.get(k, False) for k in [
+        'mlx_whisper', 'mlx', 'mlx_embeddings',
+        'mutagen', 'requests', 'numpy'
+    ])
+    
+    # Device: always MLX on Apple Silicon (the only supported platform)
+    device = 'mlx'
     
     return {
         'dependencies': deps,
         'all_installed': all_installed,
-        'device': get_device() if deps['torch'] else 'unknown'
+        'device': device,
     }
 
 
