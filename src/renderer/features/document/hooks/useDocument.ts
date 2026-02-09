@@ -23,9 +23,6 @@ export interface UseDocumentResult {
   /** Whether a document is loaded */
   hasDocument: boolean;
 
-  /** Whether this is a legacy (body-only) document */
-  isLegacy: boolean;
-
   /** The DocumentManager instance (null if no document) */
   manager: DocumentManager | null;
 
@@ -137,7 +134,6 @@ export function useDocument(): UseDocumentResult {
 
   return {
     hasDocument: context.hasDocument,
-    isLegacy: context.isLegacy,
     manager: context.manager,
     state,
     root,

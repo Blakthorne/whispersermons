@@ -1,13 +1,18 @@
 /**
  * PreferencesContext
- * 
+ *
  * React Context for managing app preferences and the preferences dialog state.
  * Integrates with localStorage for persistence.
  */
 
 import React, { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { usePreferences, usePreferencesDialog } from '../features/preferences/hooks';
-import type { AppPreferences, WhisperAdvancedSettings, PreferencesTab } from '../features/preferences/types';
+import type {
+  AppPreferences,
+  GeneralSettings,
+  WhisperAdvancedSettings,
+  PreferencesTab,
+} from '../features/preferences/types';
 
 // ============================================================================
 // CONTEXT TYPES
@@ -18,13 +23,17 @@ export interface PreferencesContextValue {
   preferences: AppPreferences;
   /** Whether preferences have been loaded from storage */
   isPreferencesLoaded: boolean;
+  /** Update general settings (model, language) */
+  updateGeneralSettings: (updates: Partial<GeneralSettings>) => void;
   /** Update Whisper advanced settings */
   updateWhisperSettings: (updates: Partial<WhisperAdvancedSettings>) => void;
+  /** Reset general settings to defaults */
+  resetGeneralSettings: () => void;
   /** Reset Whisper settings to defaults */
   resetWhisperSettings: () => void;
   /** Reset all preferences to defaults */
   resetAllPreferences: () => void;
-  
+
   // Dialog state
   /** Whether the preferences dialog is open */
   isPreferencesOpen: boolean;
@@ -58,25 +67,23 @@ export function PreferencesProvider({ children }: PreferencesProviderProps): Rea
   const {
     preferences,
     isLoaded,
+    updateGeneralSettings,
     updateWhisperSettings,
+    resetGeneralSettings,
     resetWhisperSettings,
     resetAllPreferences,
   } = usePreferences();
-  
-  const {
-    isOpen,
-    activeTab,
-    openDialog,
-    closeDialog,
-    toggleDialog,
-    setActiveTab,
-  } = usePreferencesDialog();
-  
+
+  const { isOpen, activeTab, openDialog, closeDialog, toggleDialog, setActiveTab } =
+    usePreferencesDialog();
+
   const contextValue = useMemo<PreferencesContextValue>(
     () => ({
       preferences,
       isPreferencesLoaded: isLoaded,
+      updateGeneralSettings,
       updateWhisperSettings,
+      resetGeneralSettings,
       resetWhisperSettings,
       resetAllPreferences,
       isPreferencesOpen: isOpen,
@@ -89,7 +96,9 @@ export function PreferencesProvider({ children }: PreferencesProviderProps): Rea
     [
       preferences,
       isLoaded,
+      updateGeneralSettings,
       updateWhisperSettings,
+      resetGeneralSettings,
       resetWhisperSettings,
       resetAllPreferences,
       isOpen,
@@ -100,12 +109,8 @@ export function PreferencesProvider({ children }: PreferencesProviderProps): Rea
       setActiveTab,
     ]
   );
-  
-  return (
-    <PreferencesContext.Provider value={contextValue}>
-      {children}
-    </PreferencesContext.Provider>
-  );
+
+  return <PreferencesContext.Provider value={contextValue}>{children}</PreferencesContext.Provider>;
 }
 
 // ============================================================================

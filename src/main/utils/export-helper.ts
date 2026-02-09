@@ -456,7 +456,7 @@ export function htmlToMarkdown(html: string): string {
     return `"${content.replace(/<[^>]+>/g, '').trim()}"\n\n`;
   });
 
-  // Legacy blockquotes support
+  // Generic blockquotes (visual formatting, not Bible passages)
   md = md.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gis, (_, content) => {
     return content.replace(/<[^>]+>/g, '').trim() + '\n\n';
   });

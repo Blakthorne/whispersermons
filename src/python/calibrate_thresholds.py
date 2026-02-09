@@ -17,7 +17,7 @@ import time
 # Ensure the python source directory is on the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from main import segment_into_paragraphs, extract_tags  # type: ignore[attr-defined]
+from main import tokenize_sentences, segment_into_paragraph_groups, extract_tags  # type: ignore[attr-defined]
 
 
 def calibrate_paragraph_thresholds(text: str) -> list[dict]:
@@ -31,38 +31,40 @@ def calibrate_paragraph_thresholds(text: str) -> list[dict]:
     print(f"Text length: {len(text)} chars, ~{len(text.split())} words")
     print()
     
+    # Tokenize once — reuse for all threshold sweeps
+    sentences = tokenize_sentences(text)
+    
     results = []
     thresholds = [round(0.20 + i * 0.05, 2) for i in range(13)]  # 0.20 to 0.80
     
     for threshold in thresholds:
         start = time.time()
-        result = segment_into_paragraphs(
-            text,
+        groups = segment_into_paragraph_groups(
+            sentences,
             min_sentences_per_paragraph=5,
             similarity_threshold=threshold,
         )
         elapsed = time.time() - start
         
-        paragraphs = result.split('\n\n')
-        para_count = len(paragraphs)
-        avg_len = sum(len(p.split()) for p in paragraphs) / max(para_count, 1)
+        para_count = len(groups)
+        avg_len = len(sentences) / max(para_count, 1)
         
         results.append({
             'threshold': threshold,
             'paragraphs': para_count,
-            'avg_words': avg_len,
+            'avg_sentences': avg_len,
             'time_s': elapsed,
         })
         
         print(f"  threshold={threshold:.2f}: {para_count:3d} paragraphs, "
-              f"avg {avg_len:.0f} words/para, {elapsed:.2f}s")
+              f"avg {avg_len:.0f} sentences/para, {elapsed:.2f}s")
     
     print()
     print("Summary:")
-    print(f"  {'Threshold':>10} | {'Paragraphs':>10} | {'Avg Words':>10}")
+    print(f"  {'Threshold':>10} | {'Paragraphs':>10} | {'Avg Sents':>10}")
     print(f"  {'-' * 10}-+-{'-' * 10}-+-{'-' * 10}")
     for r in results:
-        print(f"  {r['threshold']:10.2f} | {r['paragraphs']:10d} | {r['avg_words']:10.0f}")
+        print(f"  {r['threshold']:10.2f} | {r['paragraphs']:10d} | {r['avg_sentences']:10.0f}")
     
     print()
     # Recommend a threshold that gives ~10-20 paragraphs for a typical sermon
@@ -184,7 +186,7 @@ def main():
     print()
     print("Next steps:")
     print("  1. Review the recommended thresholds above")
-    print("  2. Update similarity_threshold default in segment_into_paragraphs()")
+    print("  2. Update similarity_threshold default in segment_into_paragraph_groups()")
     print("  3. Update semantic_threshold default in extract_tags()")
     print("  4. Re-run tests to verify quality with new thresholds")
 

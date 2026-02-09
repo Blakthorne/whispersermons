@@ -60,16 +60,17 @@ export interface SermonDocument {
   references: string[];
   /** Extracted keyword tags */
   tags: string[];
-  /** Processed body text with paragraphs and Bible passages */
+  /**
+   * Raw transcript text (unmodified by pipeline processing).
+   * Paragraph structure comes exclusively from the documentState AST.
+   */
   body: string;
   /** Raw transcript before processing */
   rawTranscript: string;
   /**
-   * Structured document state (new AST-based model)
+   * Structured document state (AST-based model).
    * Contains the full document tree with stable node IDs, passage metadata,
    * interjection positions, and event log for undo/redo.
-   * 
-   * This field is optional for backward compatibility with older transcriptions.
    */
   documentState?: DocumentState;
   /**
@@ -82,10 +83,6 @@ export interface SermonDocument {
     paragraphCount: number;
     interjectionCount: number;
   };
-  /**
-   * Error message if AST building failed (legacy output still available)
-   */
-  astError?: string;
 }
 
 /**
@@ -204,8 +201,6 @@ export interface HistoryItem {
   fullText: string;
   /** Whether this was processed as a sermon */
   isSermon?: boolean;
-  /** Flag legacy entries created in non-sermon mode */
-  isLegacyNonSermon?: boolean;
   /** Sermon document data (if isSermon) - contains DocumentState as source of truth */
   sermonDocument?: SermonDocument;
 }

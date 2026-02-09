@@ -17,8 +17,6 @@ export {
   restoreFromHistoryItem,
   hasDocumentState,
   hasNewFormatState,
-  // Migration
-  migrateHistoryItem,
   // Storage utilities
   estimateStorageSize,
   pruneEventLog,

@@ -6,7 +6,15 @@
  * Uses mlx-whisper for Apple Silicon optimized transcription.
  */
 
-import type { WhisperAdvancedSettings, AppPreferences } from './types';
+import type { WhisperAdvancedSettings, GeneralSettings, AppPreferences } from './types';
+
+/**
+ * Default general settings
+ */
+export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
+  model: 'base',
+  language: 'auto',
+};
 
 /**
  * Default Whisper advanced settings
@@ -41,6 +49,7 @@ export const DEFAULT_WHISPER_SETTINGS: WhisperAdvancedSettings = {
  * Default app preferences with version for migrations
  */
 export const DEFAULT_PREFERENCES: AppPreferences = {
+  general: DEFAULT_GENERAL_SETTINGS,
   whisper: DEFAULT_WHISPER_SETTINGS,
   version: 1,
 };

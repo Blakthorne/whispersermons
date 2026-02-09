@@ -1,6 +1,6 @@
 /**
  * PreferencesDialog Component
- * 
+ *
  * A macOS-style Preferences dialog with tabular navigation.
  * Follows Apple Human Interface Guidelines for settings windows.
  */
@@ -9,6 +9,7 @@ import React, { useEffect, useCallback } from 'react';
 import { Settings, X } from 'lucide-react';
 import { Button } from '../../../../components/ui';
 import { TabButton } from '../TabButton';
+import { GeneralSettings as GeneralSettingsPanel } from '../GeneralSettings';
 import { TranscriptionSettings } from '../TranscriptionSettings';
 import type { PreferencesTab } from '../../types';
 import './PreferencesDialog.css';
@@ -82,16 +83,22 @@ function PreferencesDialog({
           </div>
           <div className="preferences-tabs" role="tablist" aria-label="Preferences tabs">
             <TabButton
+              id="general"
+              label="General"
+              isActive={activeTab === 'general'}
+              onClick={() => onTabChange('general')}
+            />
+            <TabButton
               id="transcription"
               label="Transcription"
               isActive={activeTab === 'transcription'}
               onClick={() => onTabChange('transcription')}
             />
-            {/* Future tabs can be added here */}
           </div>
         </div>
 
         <div className="preferences-content" role="tabpanel" aria-labelledby={`tab-${activeTab}`}>
+          {activeTab === 'general' && <GeneralSettingsPanel />}
           {activeTab === 'transcription' && <TranscriptionSettings />}
         </div>
       </div>

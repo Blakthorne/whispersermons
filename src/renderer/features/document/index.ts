@@ -66,7 +66,6 @@ export type {
   DocumentStatistics,
   NodeWithPath,
   TextExtractionOptions,
-  LegacyConversionResult,
 } from './DocumentManager';
 
 // --- Context ---
@@ -162,7 +161,6 @@ export {
   restoreFromHistoryItem,
   hasDocumentState,
   hasNewFormatState,
-  migrateHistoryItem,
   estimateStorageSize,
   pruneEventLog,
   eventLogSize,

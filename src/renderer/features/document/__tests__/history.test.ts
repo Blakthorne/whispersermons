@@ -4,19 +4,17 @@
  * Tests for:
  * - Creating history items with document state
  * - Restoring document state from history
- * - Migrating legacy history items
  * - Storage size estimation
  * - Event log pruning
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   createHistoryItemWithState,
   updateHistoryItemState,
   restoreFromHistoryItem,
   hasDocumentState,
   hasNewFormatState,
-  migrateHistoryItem,
   estimateStorageSize,
   pruneEventLog,
   eventLogSize,
@@ -250,7 +248,6 @@ describe('restoreFromHistoryItem', () => {
 
     expect(result.success).toBe(true);
     expect(result.state).toBeDefined();
-    expect(result.isLegacy).toBe(false);
     expect(result.state?.root.title).toBe('Test');
   });
 
@@ -265,7 +262,6 @@ describe('restoreFromHistoryItem', () => {
 
     expect(result.success).toBe(true);
     expect(result.state).toBeDefined();
-    expect(result.isLegacy).toBe(false);
   });
 
   // Note: Legacy HTML fallback tests removed (AST-only architecture)
@@ -277,8 +273,6 @@ describe('restoreFromHistoryItem', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
-    // Note: isLegacy is now always false since legacy support removed
-    expect(result.isLegacy).toBe(false);
   });
 
   it('should handle corrupted documentStateJson', () => {
@@ -354,38 +348,6 @@ describe('hasNewFormatState', () => {
   it('should return false when no document data', () => {
     const item = createFullHistoryItem();
     expect(hasNewFormatState(item)).toBe(false);
-  });
-});
-
-// ============================================================================
-// MIGRATE HISTORY ITEM TESTS
-// ============================================================================
-
-describe('migrateHistoryItem', () => {
-  it('should return existing item if already has new format', () => {
-    const state = createTestDocumentState();
-    const baseItem = createTestHistoryItem();
-    const historyItem = createHistoryItemWithState(baseItem, state);
-    const fullItem: HistoryItem = { id: 'hist-1', ...historyItem };
-
-    const mockConverter = vi.fn();
-    const result = migrateHistoryItem(fullItem, mockConverter);
-
-    expect(result).toBeDefined();
-    expect(mockConverter).not.toHaveBeenCalled();
-  });
-
-  // Note: Legacy HTML conversion tests removed (AST-only architecture)
-  // migrateHistoryItem now returns null for items without DocumentState
-
-  it('should return null if no DocumentState available', () => {
-    const item = createFullHistoryItem();
-    const mockConverter = vi.fn();
-
-    const result = migrateHistoryItem(item, mockConverter);
-
-    expect(result).toBeNull();
-    expect(mockConverter).not.toHaveBeenCalled();
   });
 });
 

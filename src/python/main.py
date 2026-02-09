@@ -35,7 +35,8 @@ Calibrated on test_mode_transcript.txt (580 sentences → 15 paragraphs at 0.45)
 import mlx_whisper
 import numpy as np
 import re
-from typing import List, Optional
+from typing import List, Optional, Tuple
+from dataclasses import dataclass
 
 # Unified embedding model (EmbeddingGemma-300m-4bit via mlx-embeddings)
 # Replaces both all-MiniLM-L6-v2 (384-dim) and all-mpnet-base-v2 (768-dim)
@@ -44,6 +45,72 @@ from embedding_model import encode_texts, load_model
 
 # Import Bible quote processor
 from bible_quote_processor import process_text, QuoteBoundary
+
+
+# ============================================================================
+# SENTENCE TOKENIZATION (immutable source text representation)
+# ============================================================================
+
+@dataclass
+class SentenceInfo:
+    """A sentence with its position in the original raw text.
+    
+    This is the fundamental unit of the integrated pipeline. By working with
+    sentence tokens instead of mutated text, we avoid all character offset
+    drift issues that arise from text modifications (adding paragraph breaks,
+    quotation marks, etc.).
+    """
+    index: int           # Sentence index (0-based)
+    text: str            # The sentence text
+    start_pos: int       # Character start position in raw_text
+    end_pos: int         # Character end position in raw_text
+
+
+def tokenize_sentences(text: str) -> List[SentenceInfo]:
+    """
+    Split raw text into sentence tokens with character positions.
+    
+    Uses the same sentence-splitting regex as paragraph segmentation to ensure
+    consistency. Each SentenceInfo records its position in the ORIGINAL text,
+    which is the single source of truth for all downstream operations.
+    
+    Args:
+        text: Raw text to tokenize (NOT modified text)
+    
+    Returns:
+        List of SentenceInfo with positions in original text
+    """
+    stripped = text.strip()
+    if not stripped:
+        return []
+    
+    # Split into sentences using the same regex as segment_into_paragraphs
+    sentence_texts = re.split(r'(?<=[.!?])\s+', stripped)
+    
+    sentences = []
+    current_pos = 0
+    
+    for idx, sent_text in enumerate(sentence_texts):
+        if not sent_text:
+            continue
+        # Find the actual position in the original text
+        start_pos = text.find(sent_text, current_pos)
+        if start_pos == -1:
+            # Fallback: use current position (shouldn't happen with well-formed text)
+            start_pos = current_pos
+        end_pos = start_pos + len(sent_text)
+        
+        sentences.append(SentenceInfo(
+            index=idx,
+            text=sent_text,
+            start_pos=start_pos,
+            end_pos=end_pos
+        ))
+        current_pos = end_pos
+    
+    return sentences
+
+
 
 # Cached embeddings for theological concepts (computed once, reused)
 # =============================================================================
@@ -368,148 +435,53 @@ PRAYER_START_PATTERNS = [
 AMEN_END_PATTERN = r"\bamen\s*[.!]?\s*$"
 
 
-def convert_to_markdown(transcript: str, quote_boundaries: Optional[List[QuoteBoundary]] = None,
-                        tags: Optional[List[str]] = None, scripture_refs: Optional[List[str]] = None) -> str:
+
+def segment_into_paragraph_groups(
+    sentences: List[SentenceInfo],
+    quote_boundaries: Optional[List[QuoteBoundary]] = None,
+    min_sentences_per_paragraph: int = 8,
+    similarity_threshold: float = 0.55,
+    window_size: int = 3
+) -> List[List[int]]:
     """
-    Convert the final transcript to a formatted markdown file.
+    Group sentences into paragraphs using semantic similarity analysis.
     
-    Output structure:
-    1. Tags section (first)
-    2. Scripture References section (second)
-    3. Transcript with formatting:
-       - Bible quotes (text in "...") are italicized
-       - Bible verse references (e.g., "Matthew 2:1-12") are bolded
+    This is the INTEGRATED version that works with SentenceInfo tokens and returns
+    paragraph groups as lists of sentence indices. Unlike segment_into_paragraphs(),
+    this function NEVER modifies the source text - it only determines which sentences
+    belong to which paragraph.
+    
+    This eliminates all character offset drift issues because:
+    - Quote boundaries reference positions in the original raw_text
+    - SentenceInfo tokens reference positions in the original raw_text
+    - Paragraph groups are just lists of sentence indices
+    - No text is ever modified, so no position remapping is needed
     
     Args:
-        transcript: The paragraphed transcript text
-        quote_boundaries: List of QuoteBoundary objects for quotes
-        tags: List of keyword tag strings
-        scripture_refs: List of scripture reference strings
+        sentences: List of SentenceInfo from tokenize_sentences()
+        quote_boundaries: List of QuoteBoundary objects (positions in raw_text)
+        min_sentences_per_paragraph: Minimum sentences before allowing a break
+        similarity_threshold: Cosine similarity threshold for topic change
+        window_size: Rolling average window for smoothing similarity
     
     Returns:
-        Formatted markdown string
+        List of sentence index groups, e.g. [[0,1,2,3], [4,5,6,7], ...]
     """
-    print("Converting to markdown format...")
+    if not sentences:
+        return []
     
-    markdown_parts = []
-    
-    # Section 1: Tags (if available)
-    if tags:
-        markdown_parts.append("## Tags\n")
-        markdown_parts.append(", ".join(tags))
-        markdown_parts.append("\n")
-    
-    # Section 2: Scripture References (if available)
-    if scripture_refs:
-        markdown_parts.append("\n---\n")
-        markdown_parts.append("\n## Scripture References\n")
-        markdown_parts.append("\n".join(f"- {ref}" for ref in scripture_refs))
-        markdown_parts.append("\n")
-    
-    # Section 3: Transcript with formatting
-    if tags or scripture_refs:
-        markdown_parts.append("\n---\n")
-    markdown_parts.append("\n## Transcript\n\n")
-    
-    # Process the transcript to add formatting
-    formatted_transcript = transcript
-    
-    # Remove any existing metadata sections from the transcript (they'll be at the start now)
-    # These are added at the end in the current pipeline, so strip them
-    if "---\n\n## Scripture References" in formatted_transcript:
-        formatted_transcript = formatted_transcript.split("---\n\n## Scripture References")[0].strip()
-    if "---\n\n## Tags" in formatted_transcript:
-        formatted_transcript = formatted_transcript.split("---\n\n## Tags")[0].strip()
-    
-    # Step B: Bold Bible verse references in the text
-    # Create a pattern that matches Bible references like "Matthew 2:1-12", "John 3:16", etc.
-    # This should match the book names followed by chapter:verse patterns
-    bible_books_pattern = r'\b(' + '|'.join([
-        # Old Testament
-        'Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy',
-        'Joshua', 'Judges', 'Ruth', '1 Samuel', '2 Samuel', '1 Kings', '2 Kings',
-        '1 Chronicles', '2 Chronicles', 'Ezra', 'Nehemiah', 'Esther',
-        'Job', 'Psalms?', 'Proverbs', 'Ecclesiastes', 'Song of Solomon',
-        'Isaiah', 'Jeremiah', 'Lamentations', 'Ezekiel', 'Daniel',
-        'Hosea', 'Joel', 'Amos', 'Obadiah', 'Jonah', 'Micah',
-        'Nahum', 'Habakkuk', 'Zephaniah', 'Haggai', 'Zechariah', 'Malachi',
-        # New Testament
-        'Matthew', 'Mark', 'Luke', 'John', 'Acts', 'Romans',
-        '1 Corinthians', '2 Corinthians', 'Galatians', 'Ephesians',
-        'Philippians', 'Colossians', '1 Thessalonians', '2 Thessalonians',
-        '1 Timothy', '2 Timothy', 'Titus', 'Philemon', 'Hebrews',
-        'James', '1 Peter', '2 Peter', '1 John', '2 John', '3 John',
-        'Jude', 'Revelation'
-    ]) + r')\s+(\d+)(?::(\d+)(?:-(\d+))?)?'
-    
-    def bold_reference(match):
-        full_match = match.group(0)
-        # Only bold if it looks like a proper reference (has chapter at minimum)
-        return f'**{full_match}**'
-    
-    formatted_transcript = re.sub(bible_books_pattern, bold_reference, formatted_transcript, flags=re.IGNORECASE)
-    
-    # Clean up any double-bolding that might occur
-    formatted_transcript = re.sub(r'\*\*\*\*', '**', formatted_transcript)
-    
-    markdown_parts.append(formatted_transcript)
-    
-    result = "".join(markdown_parts)
-    
-    print(f"   ✓ Markdown conversion complete")
-    if quote_boundaries:
-        print(f"      • {len(quote_boundaries)} quotes italicized")
-    if scripture_refs:
-        print(f"      • {len(scripture_refs)} references section")
-    if tags:
-        print(f"      • {len(tags)} tags in header")
-    
-    return result
-
-
-def segment_into_paragraphs(text: str, quote_boundaries: Optional[List[QuoteBoundary]] = None, 
-                            min_sentences_per_paragraph: int = 8, 
-                            similarity_threshold: float = 0.55, 
-                            window_size: int = 3) -> str:
-    """
-    Intelligently segment text into paragraphs based on semantic similarity.
-    
-    Uses EmbeddingGemma-300m-4bit (768-dim) for sentence embeddings.
-    The threshold was calibrated from 0.65 (MiniLM 384-dim) to 0.55 for the
-    new model's higher-quality similarity distributions.
-    Optimized for rambling speech like sermons - avoids over-segmentation.
-    
-    IMPORTANT: This function ensures Bible quotes are never split across paragraphs.
-    Quotes are treated as atomic units that must stay together.
-    
-    Also detects prayers and ensures they start new paragraphs.
-    
-    Args:
-        text: The input text to segment (with quotes already marked)
-        quote_boundaries: List of QuoteBoundary objects indicating quote positions
-                         (used to prevent splitting quotes across paragraphs)
-        min_sentences_per_paragraph: Minimum sentences before allowing a paragraph break (default: 8)
-        similarity_threshold: Cosine similarity threshold (0-1). Lower = more paragraphs (default: 0.65)
-        window_size: Number of sentence transitions to average for smoother detection (default: 3)
-    
-    Returns:
-        Text with paragraph breaks (double newlines)
-    """
-    print("Segmenting text into paragraphs based on context...")
-    
-    # Split into sentences
-    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    sentence_texts = [s.text for s in sentences]
     
     if len(sentences) <= min_sentences_per_paragraph:
-        return text
+        return [list(range(len(sentences)))]
     
-    # Detect sentences that are prayer starts (should force paragraph break before)
+    print("Segmenting text into paragraphs based on context...")
+    
+    # Detect prayer starts and "Amen" endings
     prayer_start_sentences = set()
-    # Detect sentences that are "Amen" (should be attached to previous paragraph)
     amen_sentences = set()
-    for sent_idx, sentence in enumerate(sentences):
-        sent_stripped = sentence.strip()
-        # Check for "Amen" first (takes priority)
+    for sent_idx, sent_info in enumerate(sentences):
+        sent_stripped = sent_info.text.strip()
         if re.search(AMEN_END_PATTERN, sent_stripped, re.IGNORECASE):
             amen_sentences.add(sent_idx)
         else:
@@ -519,32 +491,27 @@ def segment_into_paragraphs(text: str, quote_boundaries: Optional[List[QuoteBoun
                     break
     
     if prayer_start_sentences:
-        print(f"   Detected {len(prayer_start_sentences)} prayer start(s) (will force paragraph breaks)")
+        print(f"   Detected {len(prayer_start_sentences)} prayer start(s)")
     if amen_sentences:
-        print(f"   Detected {len(amen_sentences)} 'Amen' sentence(s) (will attach to previous paragraph)")
+        print(f"   Detected {len(amen_sentences)} 'Amen' sentence(s)")
     
-    # Build prayer RANGES (start_idx → amen_idx) to prevent breaks within prayers
-    # Each PRIMARY prayer start should find its corresponding Amen ending
-    # NESTED prayer starts (like "Dearly Father" inside "Let's pray") should NOT force breaks
+    # Build prayer ranges
     sentences_in_prayers = set()
-    primary_prayer_starts = set()  # Only these will force paragraph breaks
-    prayer_ranges = []  # List of (start, end) tuples
+    primary_prayer_starts = set()
+    prayer_ranges = []
     sorted_prayer_starts = sorted(prayer_start_sentences)
     sorted_amens = sorted(amen_sentences)
     used_amens = set()
     
     for prayer_start_idx in sorted_prayer_starts:
-        # Skip if this start is already inside another prayer range
         already_in_range = False
         for (range_start, range_end) in prayer_ranges:
             if range_start <= prayer_start_idx <= range_end:
                 already_in_range = True
                 break
-        
         if already_in_range:
-            continue  # This is a nested prayer start, skip it
-            
-        # Find the first unused Amen after this start
+            continue
+        
         amen_idx = None
         for candidate_amen in sorted_amens:
             if candidate_amen > prayer_start_idx and candidate_amen not in used_amens:
@@ -553,61 +520,37 @@ def segment_into_paragraphs(text: str, quote_boundaries: Optional[List[QuoteBoun
                 break
         
         if amen_idx is not None:
-            # This is a PRIMARY prayer start - mark it and build range
             primary_prayer_starts.add(prayer_start_idx)
             prayer_ranges.append((prayer_start_idx, amen_idx))
-            # Mark all sentences in this range
             for idx in range(prayer_start_idx, amen_idx + 1):
                 sentences_in_prayers.add(idx)
     
     if sentences_in_prayers:
-        print(f"   {len(sentences_in_prayers)} sentences are within prayers (will not split)")
-        if len(primary_prayer_starts) < len(prayer_start_sentences):
-            nested = len(prayer_start_sentences) - len(primary_prayer_starts)
-            print(f"   {nested} nested prayer pattern(s) detected (will not force breaks)")
+        print(f"   {len(sentences_in_prayers)} sentences within prayers")
     
-    # Build a mapping of character positions to sentence indices
-    # This helps us identify which sentences are part of quotes
-    sentence_char_positions = []
-    current_pos = 0
-    for sent in sentences:
-        start_pos = text.find(sent, current_pos)
-        if start_pos == -1:
-            start_pos = current_pos
-        end_pos = start_pos + len(sent)
-        sentence_char_positions.append((start_pos, end_pos))
-        current_pos = end_pos
-    
-    # Identify which sentences are part of quotes (should not be split)
-    # For quotes with interjections, we need to track the full quote range
+    # Map quote boundaries to sentence indices using character positions
     sentences_in_quotes = set()
-    quote_ranges = []  # List of (first_sentence_idx, last_sentence_idx) for each quote
+    quote_ranges = []
     if quote_boundaries:
         for quote in quote_boundaries:
             first_sent_idx = None
             last_sent_idx = None
-            for sent_idx, (sent_start, sent_end) in enumerate(sentence_char_positions):
-                # Check if sentence overlaps with quote boundary
-                # A sentence is "in" a quote if there's any overlap
-                if sent_start < quote.end_pos and sent_end > quote.start_pos:
-                    sentences_in_quotes.add(sent_idx)
+            for sent_info in sentences:
+                # Check overlap between sentence and quote using character positions
+                if sent_info.start_pos < quote.end_pos and sent_info.end_pos > quote.start_pos:
+                    sentences_in_quotes.add(sent_info.index)
                     if first_sent_idx is None:
-                        first_sent_idx = sent_idx
-                    last_sent_idx = sent_idx
+                        first_sent_idx = sent_info.index
+                    last_sent_idx = sent_info.index
             
-            # Store the full range for this quote (handles interjections)
             if first_sent_idx is not None and last_sent_idx is not None:
                 quote_ranges.append((first_sent_idx, last_sent_idx))
         
-        print(f"   {len(sentences_in_quotes)} sentences are within Bible quotes (will not split)")
-        if any(end - start > 0 for start, end in quote_ranges):
-            multi_sent_quotes = sum(1 for start, end in quote_ranges if end > start)
-            print(f"   {multi_sent_quotes} quotes span multiple sentences (will keep together)")
+        print(f"   {len(sentences_in_quotes)} sentences within Bible quotes")
     
-    # Get embeddings for all sentences using unified EmbeddingGemma model (768-dim)
-    # Task: semantic_similarity for paragraph boundary detection
-    print(f"Analyzing {len(sentences)} sentences...")
-    embeddings = encode_texts(sentences, task="semantic_similarity")
+    # Get embeddings for all sentences
+    print(f"Analyzing {len(sentence_texts)} sentences...")
+    embeddings = encode_texts(sentence_texts, task="semantic_similarity")
     
     # Calculate cosine similarities between consecutive sentences
     similarities = []
@@ -617,7 +560,7 @@ def segment_into_paragraphs(text: str, quote_boundaries: Optional[List[QuoteBoun
         )
         similarities.append(cos_sim)
     
-    # Calculate rolling average for smoother topic detection
+    # Smooth similarities with rolling average
     smoothed_similarities = []
     for i in range(len(similarities)):
         start_idx = max(0, i - window_size // 2)
@@ -625,93 +568,79 @@ def segment_into_paragraphs(text: str, quote_boundaries: Optional[List[QuoteBoun
         avg_sim = np.mean(similarities[start_idx:end_idx])
         smoothed_similarities.append(avg_sim)
     
-    # Build paragraphs with minimum length requirement
-    # CRITICAL: Never break inside a quote (even with interjections)
-    # ALSO: Force breaks before AND after prayers (prayers get their own paragraphs)
-    paragraphs = []
-    current_paragraph = [sentences[0]]
-    just_ended_prayer = False  # Track if we just added an Amen
+    # Build paragraph groups
+    groups: List[List[int]] = []
+    current_group: List[int] = [0]
+    just_ended_prayer = False
     
     for i, similarity in enumerate(smoothed_similarities):
         next_sentence_idx = i + 1
         
-        # If we just ended a prayer with Amen, force a paragraph break now
+        # Force paragraph break after prayer ending
         if just_ended_prayer:
-            if current_paragraph:
-                paragraphs.append(' '.join(current_paragraph))
-                current_paragraph = []
+            if current_group:
+                groups.append(current_group)
+                current_group = []
             just_ended_prayer = False
         
-        # Check if this sentence (i+1) is a PRIMARY prayer start (force break BEFORE it)
-        # Only primary prayer starts force breaks - nested ones (like "Dearly Father" inside "Let's pray") don't
+        # Force paragraph break before primary prayer start
         is_new_prayer_start = next_sentence_idx in primary_prayer_starts
-        if is_new_prayer_start and current_paragraph:
-            # Force paragraph break before prayer
-            paragraphs.append(' '.join(current_paragraph))
-            current_paragraph = [sentences[next_sentence_idx]]
+        if is_new_prayer_start and current_group:
+            groups.append(current_group)
+            current_group = [next_sentence_idx]
             continue
         
-        # If this is an "Amen" sentence, add it to current paragraph and mark for break after
+        # Amen sentences: add to current group, then flag for break
         if next_sentence_idx in amen_sentences:
-            current_paragraph.append(sentences[next_sentence_idx])
-            just_ended_prayer = True  # Will force break on next iteration
+            current_group.append(next_sentence_idx)
+            just_ended_prayer = True
             continue
         
-        current_paragraph.append(sentences[next_sentence_idx])
+        current_group.append(next_sentence_idx)
         
-        # Determine if we CAN break here (not inside a quote OR a prayer)
+        # Determine if we can break here
         can_break = True
         
-        # Check if we're in the middle of a prayer - if so, don't break
+        # Don't break inside prayers
         if sentences_in_prayers:
             if next_sentence_idx in sentences_in_prayers:
-                # Check if the next sentence is also part of the same prayer
                 if (next_sentence_idx + 1) < len(sentences) and (next_sentence_idx + 1) in sentences_in_prayers:
                     can_break = False
         
-        # Check if we're in the middle of a quote (including quotes with interjections)
-        # Use quote_ranges to check if current and next sentence are part of same logical quote
+        # Don't break inside quotes
         if can_break and quote_ranges:
             for quote_start, quote_end in quote_ranges:
-                # If current sentence is within a quote range and there are more sentences
-                # in that same quote range after us, don't break
                 if quote_start <= next_sentence_idx <= quote_end:
                     if next_sentence_idx < quote_end:
-                        # There are more sentences in this quote - don't break
                         can_break = False
                         break
         
-        # Check for interjection pattern: sentence ends with "what?", "who?", etc.
-        # and next sentence starts with a quote - these should stay together
+        # Don't break between interjection and continuation
         if can_break and (next_sentence_idx + 1) < len(sentences):
-            current_sent = sentences[next_sentence_idx].strip()
-            following_sent = sentences[next_sentence_idx + 1].strip()
-            # Pattern: current ends with interjection question
+            current_sent = sentence_texts[next_sentence_idx].strip()
             if re.search(r'\b(what|who|where|when|why|how)\?\s*$', current_sent, re.IGNORECASE):
-                # If the next sentence is part of a quote, don't break
                 if (next_sentence_idx + 1) in sentences_in_quotes:
                     can_break = False
         
-        # Only consider breaking if we have minimum sentences AND we're not in a quote/prayer
-        if len(current_paragraph) >= min_sentences_per_paragraph and can_break:
-            # Break on significant topic change
+        # Break on significant topic change
+        if len(current_group) >= min_sentences_per_paragraph and can_break:
             if similarity < similarity_threshold:
-                paragraphs.append(' '.join(current_paragraph))
-                current_paragraph = []
+                groups.append(current_group)
+                current_group = []
         
-        # Progress indicator for long texts
+        # Progress indicator
         if (next_sentence_idx) % 50 == 0:
             print(f"  Processed {next_sentence_idx}/{len(smoothed_similarities)} sentence transitions...")
     
-    # Add final paragraph
-    if current_paragraph:
-        paragraphs.append(' '.join(current_paragraph))
+    # Add final group
+    if current_group:
+        groups.append(current_group)
     
-    print(f"✓ Created {len(paragraphs)} paragraphs from {len(sentences)} sentences")
-    print(f"  Average: {len(sentences) / len(paragraphs):.1f} sentences per paragraph")
+    total_sentences = sum(len(g) for g in groups)
+    print(f"✓ Created {len(groups)} paragraph groups from {total_sentences} sentences")
+    print(f"  Average: {total_sentences / len(groups):.1f} sentences per paragraph")
     
-    # Join paragraphs with double newlines
-    return '\n\n'.join(paragraphs)
+    return groups
 
 
 def compute_concept_embeddings() -> tuple:
@@ -943,6 +872,7 @@ def extract_tags(text: str, quote_boundaries: Optional[List[QuoteBoundary]] = No
 
 if __name__ == "__main__":
     import sys
+    import json
     
     # Check for test mode flag
     test_mode = "test" in sys.argv
@@ -954,16 +884,19 @@ if __name__ == "__main__":
     else:
         audio_file = "20251214-SunAM-Polar.mp3"
     
-    # PIPELINE ORDER (optimized):
+    # PIPELINE ORDER (AST-first architecture):
     # 1. Transcribe audio to raw text (or load from test file)
-    # 2. Process Bible quotes (auto-detect translation + normalize references + add quotation marks)
-    # 3. Segment into paragraphs (respecting quote boundaries)
+    # 2. Process Bible quotes (auto-detect translation + detect quote boundaries)
+    # 3. Tokenize sentences and segment into paragraph GROUPS (no text modification)
     # 4. Extract scripture references
     # 5. Extract keyword tags for categorization
-    # 6. Convert to final markdown file (final.md)
+    # 6. Build structured AST from raw_text + sentences + groups + boundaries
+    #
+    # IMPORTANT: The raw text is NEVER modified. Paragraph structure is
+    # represented as separate ParagraphNode entries in the AST.
     
     print("\n" + "=" * 70)
-    print("SERMON TRANSCRIPTION PIPELINE")
+    print("SERMON TRANSCRIPTION PIPELINE (AST-based)")
     if test_mode:
         print("Mode: TEST (using whisper_test.txt)")
     else:
@@ -987,100 +920,76 @@ if __name__ == "__main__":
         print("   Raw transcription saved to: whisper_raw.txt")
     
     # Step 2: Process Bible quotes using the bible_quote_processor
-    # Translation is auto-detected PER QUOTE from the transcript content
-    # This handles speakers who switch translations mid-sermon
-    # This normalizes references (e.g., "Hebrews 725" → "Hebrews 7:25")
-    # and adds quotation marks around actual Bible quotes
     print("\n📖 STEP 2: Processing Bible quotes (detecting translation per-quote)...")
-    with_quotes, quote_boundaries = process_text(raw, translation="", auto_detect=True, verbose=True)
+    _processed_text, quote_boundaries = process_text(raw, translation="", auto_detect=True, verbose=True)
     
-    # Step 3: Segment into paragraphs (respecting quote boundaries)
-    # The quote_boundaries are passed so quotes are never split across paragraphs
-    print("\n📄 STEP 3: Segmenting into paragraphs...")
-    paragraphed = segment_into_paragraphs(
-        with_quotes,
+    # Step 3: Tokenize and segment into paragraph GROUPS (AST-only, no text modification)
+    print("\n📄 STEP 3: Tokenizing and segmenting into paragraph groups...")
+    sentences = tokenize_sentences(raw)
+    paragraph_groups = segment_into_paragraph_groups(
+        sentences,
         quote_boundaries=quote_boundaries,
-        min_sentences_per_paragraph=5,  # At least 5 sentences per paragraph
-        similarity_threshold=0.45,  # EmbeddingGemma-300m: calibrated for ~15 paragraphs per sermon
-        window_size=3  # Smooth detection over 3 sentence transitions
+        min_sentences_per_paragraph=5,
+        similarity_threshold=0.45,
+        window_size=3
     )
+    print(f"   ✓ {len(paragraph_groups)} paragraph groups from {len(sentences)} sentences")
     
-    # Step 4: Build scripture references section
+    # Step 4: Extract scripture references
     print("\n📖 STEP 4: Building scripture references...")
-    references_section = ""
+    unique_refs = []
     if quote_boundaries:
-        # Extract unique references, preserving order of first appearance
-        # Use the formatted reference string (e.g., "Matthew 2:1-12")
         seen_refs = set()
-        unique_refs = []
         for qb in quote_boundaries:
-            # Get the properly formatted reference string
             ref_str = qb.reference.to_standard_format()
             if ref_str not in seen_refs:
                 seen_refs.add(ref_str)
                 unique_refs.append(ref_str)
-        
-        if unique_refs:
-            references_section = "\n\n---\n\n## Scripture References\n\n"
-            references_section += "\n".join(f"- {ref}" for ref in unique_refs)
-            print(f"   ✓ Found {len(unique_refs)} unique scripture references")
+        print(f"   ✓ Found {len(unique_refs)} unique scripture references")
     else:
         print("   No scripture references found")
     
-    # Step 5: Extract keyword tags for categorization
+    # Step 5: Extract keyword tags from RAW text
     print("\n🏷️  STEP 5: Extracting keyword tags...")
-    tags = extract_tags(paragraphed, quote_boundaries=quote_boundaries, verbose=True)
-    tags_section = ""
-    if tags:
-        tags_section = "\n\n---\n\n## Tags\n\n"
-        tags_section += ", ".join(tags)
+    tags = extract_tags(raw, quote_boundaries=quote_boundaries, verbose=True)
     
-    # Append references and tags to the final output
-    final_output = paragraphed
-    if references_section:
-        final_output += references_section
-    if tags_section:
-        final_output += tags_section
-    
-    # Save final output (plain text version)
-    with open("whisper_cleaned.txt", "w", encoding="utf-8") as f:
-        f.write(final_output)
-    
-    # Step 6: Convert to formatted markdown file
-    print("\n📝 STEP 6: Converting to markdown (final.md)...")
-    markdown_output = convert_to_markdown(
-        transcript=paragraphed,
+    # Step 6: Build structured AST
+    print("\n🏗️  STEP 6: Building structured AST...")
+    from ast_builder import build_ast
+    ast_result = build_ast(
+        raw_text=raw,
+        sentences=sentences,
+        paragraph_groups=paragraph_groups,
         quote_boundaries=quote_boundaries,
         tags=tags,
-        scripture_refs=unique_refs if quote_boundaries else None
     )
+    print(f"   ✓ AST built: {ast_result.processing_metadata.paragraph_count} paragraphs, "
+          f"{ast_result.processing_metadata.passage_count} passages")
     
-    # Save markdown output
-    with open("final.md", "w", encoding="utf-8") as f:
-        f.write(markdown_output)
-    print("   ✓ Markdown file saved to: final.md")
+    # Save AST as JSON (the single source of truth)
+    ast_json = ast_result.document_state.to_dict()
+    with open("document_state.json", "w", encoding="utf-8") as f:
+        json.dump(ast_json, f, indent=2)
+    print("   ✓ AST saved to: document_state.json")
     
     print("\n" + "=" * 70)
     print("✅ TRANSCRIPTION COMPLETE!")
     print("=" * 70)
     print("\nOutput files:")
     if not test_mode:
-        print("  • whisper_raw.txt      - Raw transcription (no processing)")
-    print("  • whisper_quotes.txt   - With Bible quotes marked")
-    print("  • whisper_cleaned.txt  - Final output with paragraphs")
-    print("  • final.md             - Formatted markdown (tags, refs, italics, bold)")
+        print("  • whisper_raw.txt       - Raw transcription (no processing)")
+    print("  • document_state.json   - Structured AST document model")
     print(f"\nPipeline:")
     if test_mode:
         print("  1. ✓ Test file loaded (whisper_test.txt)")
     else:
         print("  1. ✓ Audio transcription (Whisper medium model)")
-    print("  2. ✓ Bible translation auto-detection (per-quote)")
-    print("  3. ✓ Bible quote detection and normalization")
-    print("  4. ✓ Paragraph segmentation (quote-aware)")
-    print("  5. ✓ Scripture references extracted")
+    print("  2. ✓ Bible quote detection (per-quote translation)")
+    print("  3. ✓ Paragraph segmentation (AST-only, no text modification)")
+    print("  4. ✓ Scripture references extracted")
     if tags:
-        print(f"  6. ✓ Keyword tags extracted ({len(tags)} tags)")
+        print(f"  5. ✓ Keyword tags extracted ({len(tags)} tags)")
     else:
-        print("  6. ⚠️  Tag extraction returned no tags")
-    print("  7. ✓ Markdown conversion (final.md)")
+        print("  5. ⚠️  Tag extraction returned no tags")
+    print(f"  6. ✓ AST built ({ast_result.processing_metadata.paragraph_count} paragraphs)")
     print("=" * 70)

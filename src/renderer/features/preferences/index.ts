@@ -6,6 +6,7 @@
 
 // Types
 export type { 
+  GeneralSettings,
   WhisperAdvancedSettings, 
   AppPreferences, 
   PreferencesTab 
@@ -13,6 +14,7 @@ export type {
 
 // Constants
 export { 
+  DEFAULT_GENERAL_SETTINGS,
   DEFAULT_WHISPER_SETTINGS, 
   DEFAULT_PREFERENCES,
   PREFERENCES_VERSION,
@@ -24,4 +26,4 @@ export {
 export { usePreferences, usePreferencesDialog } from './hooks';
 
 // Components
-export { PreferencesDialog, TabButton, TranscriptionSettings } from './components';
+export { GeneralSettingsPanel, PreferencesDialog, TabButton, TranscriptionSettings } from './components';

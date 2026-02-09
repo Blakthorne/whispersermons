@@ -8,10 +8,7 @@ import {
 import { APP_CONFIG } from '../../../config/constants';
 
 export function loadHistory(): HistoryItem[] {
-  const items = getStorageItem<HistoryItem[]>(STORAGE_KEYS.HISTORY, []);
-  return items.map((item) =>
-    item.isSermon === false ? { ...item, isLegacyNonSermon: true } : item
-  );
+  return getStorageItem<HistoryItem[]>(STORAGE_KEYS.HISTORY, []);
 }
 
 export function saveHistory(history: HistoryItem[]): boolean {

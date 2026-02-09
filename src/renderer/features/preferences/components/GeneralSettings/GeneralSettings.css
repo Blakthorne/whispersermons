@@ -1,0 +1,60 @@
+/**
+ * GeneralSettings Styles
+ *
+ * Settings for the General tab of the Preferences dialog.
+ * Adapts the model/GPU/language components to the modal context
+ * using the same design language as TranscriptionSettings.
+ */
+
+.general-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 8px;
+}
+
+/* GPU status - adapt to modal width */
+.general-settings .gpu-status {
+  margin-bottom: 0;
+}
+
+/* Setting groups in modal context */
+.general-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  background-color: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.general-settings .settings-group-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Model details in modal - remove outer margin */
+.general-settings .model-details {
+  margin: 0;
+  background: var(--bg-secondary);
+}
+
+/* Setting group selects - inherit modal styling */
+.general-settings .setting-group {
+  margin-bottom: 0;
+}
+
+.general-settings .setting-group label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.general-settings .setting-group select {
+  background: var(--bg-secondary);
+}

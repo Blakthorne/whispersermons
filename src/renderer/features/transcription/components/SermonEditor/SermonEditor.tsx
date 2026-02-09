@@ -167,11 +167,9 @@ function SermonEditor({
     []
   );
 
-  // Convert sermon document to TipTap content (AST-FIRST approach)
-  // Priority: DocumentState AST → fallback to legacy document.body
+  // Convert sermon document to TipTap content (AST-only approach)
   const defaultContent = useMemo(() => {
-    // Priority 1: Use documentState (AST) - THE SOURCE OF TRUTH for quote-aware rendering
-    // Only use AST if it has meaningful content (children nodes)
+    // Use documentState (AST) - THE SOURCE OF TRUTH for quote-aware rendering
     if (documentState?.root && documentState.root.children.length > 0) {
       const result = astToTipTapJson(documentState.root, {
         preserveIds: true,
@@ -184,59 +182,12 @@ function SermonEditor({
       }
     }
 
-    // Priority 2: Fallback to document.body if no AST or AST conversion failed
-    // This handles legacy data or fresh transcriptions without AST yet
+    // No AST available — show placeholder
     if (!document) {
       return '<p>No sermon content available. Start by processing an audio file to generate sermon content.</p>';
     }
 
-    // Build HTML from sermon document (legacy path for initial transcription)
-    let html = '';
-
-    // Title - centered by default
-    if (document.title) {
-      html += `<h1 style="text-align: center">${escapeHtml(document.title)}</h1>`;
-    }
-
-    // Primary Reference (renamed from Scripture) - use plural if semicolon present
-    if (document.biblePassage) {
-      const hasMultiple = document.biblePassage.includes(';');
-      const label = hasMultiple ? 'Primary References' : 'Primary Reference';
-      html += `<p><strong>${label}:</strong> ${escapeHtml(document.biblePassage)}</p>`;
-    }
-
-    // References from the Sermon (renamed from References) - use semicolons, no highlighting
-    if (document.references.length > 0) {
-      const refsHtml = document.references.map((ref) => escapeHtml(ref)).join('; ');
-      html += `<p><strong>References from the Sermon:</strong> ${refsHtml}</p>`;
-    }
-
-    // Tags section (below References from the Sermon) - comma-delimited, no hashtags
-    if (document.tags.length > 0) {
-      const tagsHtml = document.tags.map((tag) => escapeHtml(tag)).join(', ');
-      html += `<p><strong>Tags:</strong> ${tagsHtml}</p>`;
-    }
-
-    // Speaker section (below Tags) - from audio metadata authors field
-    if (document.speaker) {
-      html += `<p><strong>Speaker:</strong> ${escapeHtml(document.speaker)}</p>`;
-    }
-
-    // Separator
-    html += '<hr />';
-
-    // Body content (preserve paragraphs)
-    if (document.body) {
-      const paragraphs = document.body.split('\n\n');
-      paragraphs.forEach((para) => {
-        const trimmed = para.trim();
-        if (trimmed) {
-          html += `<p>${escapeHtml(trimmed)}</p>`;
-        }
-      });
-    }
-
-    return html || '<p>Empty sermon document.</p>';
+    return '<p>Document is loading...</p>';
   }, [document, documentState]);
 
   const editor = useEditor({
@@ -482,18 +433,6 @@ function SermonEditor({
       </div>
     </div>
   );
-}
-
-// Helper function to escape HTML entities
-function escapeHtml(text: string): string {
-  const map: Record<string, string> = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;',
-  };
-  return text.replace(/[&<>"']/g, (m) => map[m] || m);
 }
 
 export { SermonEditor };

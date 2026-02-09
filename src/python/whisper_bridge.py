@@ -529,127 +529,6 @@ def merge_overlapping_references(quote_boundaries: Optional[List[Any]]) -> List[
 
 
 # ============================================================================
-# POSITION REMAPPING FOR PARAGRAPH INSERTION
-# ============================================================================
-
-def remap_quote_boundaries_for_paragraphed_text(
-    original_text: str,
-    paragraphed_text: str,
-    quote_boundaries: List[Any]
-) -> List[Any]:
-    """
-    Remap QuoteBoundary positions after paragraph breaks have been inserted.
-    
-    When segment_paragraphs adds '\n\n' breaks to the text, the character positions
-    in quote_boundaries become invalid. This function builds a mapping from original
-    positions to new positions and updates the quote boundaries accordingly.
-    
-    CRITICAL FIX: This solves the bug where passage content was incorrectly extracted
-    because positions were calculated from original text but applied to paragraphed text.
-    
-    Args:
-        original_text: The original text before paragraph segmentation
-        paragraphed_text: The text after paragraph breaks were added
-        quote_boundaries: List of QuoteBoundary objects with positions from original_text
-    
-    Returns:
-        Updated list of QuoteBoundary objects with positions remapped for paragraphed_text
-    """
-    if not quote_boundaries:
-        return quote_boundaries
-    
-    # Build a character-by-character mapping from original to paragraphed positions
-    # We'll track the offset caused by inserted paragraph breaks
-    # 
-    # The paragraphed text is created by:
-    # 1. Splitting original text on sentence boundaries
-    # 2. Joining paragraphs with '\n\n' instead of single spaces
-    # 
-    # So we need to find where '\n\n' was inserted and calculate offsets
-    
-    # Find all positions where paragraph breaks were inserted
-    # by comparing the two texts
-    offset_at_position = {}  # Maps original_position -> offset
-    
-    orig_idx = 0
-    para_idx = 0
-    current_offset = 0
-    
-    # Simple approach: walk through both texts simultaneously
-    # tracking when they diverge due to inserted breaks
-    while orig_idx < len(original_text) and para_idx < len(paragraphed_text):
-        orig_char = original_text[orig_idx]
-        para_char = paragraphed_text[para_idx]
-        
-        if orig_char == para_char:
-            # Characters match, record offset for this position
-            offset_at_position[orig_idx] = current_offset
-            orig_idx += 1
-            para_idx += 1
-        elif para_char == '\n':
-            # Paragraph break was inserted at this position
-            # Count all newlines in paragraphed text first
-            newline_count = 0
-            while para_idx < len(paragraphed_text) and paragraphed_text[para_idx] == '\n':
-                newline_count += 1
-                para_idx += 1
-            
-            # Also skip the corresponding space in original text if present
-            if orig_idx < len(original_text) and original_text[orig_idx] == ' ':
-                # Space was replaced by newlines
-                # Net offset increase = (newlines - 1) because 1 char became N chars
-                current_offset += (newline_count - 1)
-                offset_at_position[orig_idx] = current_offset
-                orig_idx += 1
-            else:
-                # Pure insertion (no character replaced)
-                current_offset += newline_count
-        else:
-            # Mismatch - this shouldn't happen in normal operation
-            # but handle gracefully by advancing both
-            offset_at_position[orig_idx] = current_offset
-            orig_idx += 1
-            para_idx += 1
-    
-    # Fill in remaining positions
-    while orig_idx < len(original_text):
-        offset_at_position[orig_idx] = current_offset
-        orig_idx += 1
-    
-    # Now remap each quote boundary
-    from copy import copy
-    remapped = []
-    for qb in quote_boundaries:
-        new_qb = copy(qb)
-        
-        # Find the offset for start_pos
-        # start_pos is inclusive, so we want offset at or before this position
-        start_offset = 0
-        for pos in sorted(offset_at_position.keys()):
-            if pos <= qb.start_pos:
-                start_offset = offset_at_position[pos]
-            else:
-                break
-        new_qb.start_pos = qb.start_pos + start_offset
-        
-        # Find the offset for end_pos  
-        # end_pos is EXCLUSIVE (Python slice convention), so we want the offset
-        # for the last character BEFORE end_pos (i.e., position end_pos - 1)
-        # This means we use pos < qb.end_pos instead of pos <= qb.end_pos
-        end_offset = 0
-        for pos in sorted(offset_at_position.keys()):
-            if pos < qb.end_pos:
-                end_offset = offset_at_position[pos]
-            else:
-                break
-        new_qb.end_pos = qb.end_pos + end_offset
-        
-        remapped.append(new_qb)
-    
-    return remapped
-
-
-# ============================================================================
 # PARAGRAPH SEGMENTATION
 # ============================================================================
 
@@ -658,29 +537,37 @@ def segment_paragraphs(
     quote_boundaries: Optional[List[Any]] = None,
     min_sentences: int = 5,
     similarity_threshold: float = 0.45
-) -> str:
+) -> Tuple[List[Any], List[List[int]]]:
     """
-    Segment text into paragraphs using semantic analysis.
+    Segment text into paragraph groups using the integrated pipeline.
+    
+    Returns sentence tokens and paragraph groups (lists of sentence indices).
+    Paragraph structure is represented ONLY in the AST - the source text is
+    never modified. The AST builder uses these groups to create ParagraphNode
+    boundaries in the document tree.
+    
+    All positions reference raw_text directly - no remapping needed.
     
     Args:
-        text: Text to segment
-        quote_boundaries: Quote boundaries to respect (don't split quotes)
+        text: Raw text to segment (immutable - never modified)
+        quote_boundaries: Quote boundaries to respect (positions in raw_text)
         min_sentences: Minimum sentences per paragraph
         similarity_threshold: Threshold for topic change detection
     
     Returns:
-        Text with paragraph breaks
+        Tuple of (sentences, paragraph_groups)
     """
     emit_progress(4, "Segmenting paragraphs", 0, "Loading semantic model...")
     
-    # Import segmentation function from main.py (same directory)
-    from main import segment_into_paragraphs  # type: ignore[attr-defined]
+    from main import tokenize_sentences, segment_into_paragraph_groups
+    
+    emit_progress(4, "Segmenting paragraphs", 20, "Tokenizing sentences...")
+    sentences = tokenize_sentences(text)
     
     emit_progress(4, "Segmenting paragraphs", 30, "Analyzing sentence boundaries...")
-    
-    result = segment_into_paragraphs(
-        text,
-        quote_boundaries=quote_boundaries,  # type: ignore[arg-type]
+    paragraph_groups = segment_into_paragraph_groups(
+        sentences,
+        quote_boundaries=quote_boundaries,
         min_sentences_per_paragraph=min_sentences,
         similarity_threshold=similarity_threshold,
         window_size=3
@@ -688,7 +575,7 @@ def segment_paragraphs(
     
     emit_stage_complete(4, "Segmenting paragraphs")
     
-    return result
+    return sentences, paragraph_groups
 
 
 # ============================================================================
@@ -818,29 +705,24 @@ def process_sermon(
     )
     result['references'] = scripture_refs
     
-    # Stage 4: Segment paragraphs using original raw_text to preserve offsets
-    # quote_boundaries are relative to raw_text.
-    paragraphed_text = segment_paragraphs(
+    # Stage 4: Segment paragraphs using integrated pipeline
+    # Returns sentence tokens and paragraph groups (sentence index lists).
+    # Paragraph structure is represented ONLY in the AST - the source text
+    # is never modified. All positions reference raw_text directly.
+    sentences, paragraph_groups = segment_paragraphs(
         raw_text,
         quote_boundaries=quote_boundaries
     )
-    result['body'] = paragraphed_text
+    # Body field contains the raw transcript. Paragraph structure comes
+    # exclusively from the AST (documentState). This ensures the text
+    # is never modified during pipeline processing.
+    result['body'] = raw_text
     
-    # CRITICAL FIX: Remap quote boundary positions after paragraph insertion
-    # The paragraph segmentation adds '\n\n' breaks which shifts all positions.
-    # We need to update quote_boundaries to match the new paragraphed_text positions.
-    if quote_boundaries:
-        quote_boundaries = remap_quote_boundaries_for_paragraphed_text(
-            original_text=raw_text,
-            paragraphed_text=paragraphed_text,
-            quote_boundaries=quote_boundaries
-        )
-    
-    # Stage 5: Extract tags
-    tags = extract_tags(paragraphed_text, quote_boundaries)
+    # Stage 5: Extract tags from raw text (not modified text)
+    tags = extract_tags(raw_text, quote_boundaries)
     result['tags'] = tags
     
-    # Stage 6: Build structured AST (new document model)
+    # Stage 6: Build structured AST (new integrated document model)
     if use_ast:
         emit_progress(6, "Building document model", 0, "Creating structured document...")
         try:
@@ -849,14 +731,18 @@ def process_sermon(
             if debug_ast:
                 print("[DEBUG AST] Starting AST building with debug mode enabled", file=sys.stderr)
             
+            # New integrated pipeline: pass raw_text, sentences, groups, boundaries
+            # All positions reference raw_text directly - no remapping needed
             ast_result = build_ast(
-                paragraphed_text=paragraphed_text,
+                raw_text=raw_text,
+                sentences=sentences,
+                paragraph_groups=paragraph_groups,
                 quote_boundaries=quote_boundaries,
                 title=result['title'],
                 bible_passage=result['biblePassage'],
                 speaker=result['speaker'],
                 tags=tags,
-                debug=debug_ast  # Pass debug flag to AST builder
+                debug=debug_ast
             )
             
             # Include full document state in result
@@ -865,12 +751,11 @@ def process_sermon(
             
             emit_progress(6, "Building document model", 100, "Document model complete")
         except Exception as e:
-            # Log error but don't fail - legacy output is still available
+            # AST building is required — propagate the error
             import traceback
-            print(f"Warning: AST building failed: {e}", file=sys.stderr)
+            print(f"Error: AST building failed: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
-            result['documentState'] = None
-            result['astError'] = str(e)
+            raise RuntimeError(f"AST building failed: {e}") from e
     
     return result
 

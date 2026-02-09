@@ -4,7 +4,13 @@ import { useHistory } from '../features/history';
 import { usePreferences } from '../features/preferences';
 import { useTheme, useCopyToClipboard, useElectronMenu } from '../hooks';
 import { selectAndProcessFiles } from '../utils';
-import type { HistoryItem, SelectedFile, SermonDocument, OutputFormat, TranscriptionSettings } from '../types';
+import type {
+  HistoryItem,
+  SelectedFile,
+  SermonDocument,
+  OutputFormat,
+  TranscriptionSettings,
+} from '../types';
 import type { DocumentState, DocumentRootNode } from '../../shared/documentModel';
 import { astToHtml } from '../features/document/bridge/astTipTapConverter';
 import {
@@ -72,6 +78,20 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     handleCopy,
   } = useTranscription();
 
+  // Sync transcription settings with preferences on mount and when preferences change
+  useEffect(() => {
+    if (
+      preferences.general.model !== settings.model ||
+      preferences.general.language !== settings.language
+    ) {
+      setTranscriptionSettings({
+        ...settings,
+        model: preferences.general.model,
+        language: preferences.general.language,
+      });
+    }
+  }, [preferences.general.model, preferences.general.language]);
+
   const [selectedQueueItemId, setSelectedQueueItemId] = useState<string | null>(null);
   const [sermonDocument, setSermonDocument] = useState<SermonDocument | null>(null);
   // Draft AST JSON from Monaco editor (persists unsaved edits across tab switches)
@@ -91,9 +111,10 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
   // Guarded setter to ensure Test Mode is only enabled in dev builds
   const setSettings = useCallback(
     (newSettings: TranscriptionSettings) => {
-      const sanitizedSettings = (!isDev || !isDevToolsOpen) && newSettings.testMode
-        ? { ...newSettings, testMode: false }
-        : newSettings;
+      const sanitizedSettings =
+        (!isDev || !isDevToolsOpen) && newSettings.testMode
+          ? { ...newSettings, testMode: false }
+          : newSettings;
       setTranscriptionSettings(sanitizedSettings);
     },
     [isDev, isDevToolsOpen, setTranscriptionSettings]

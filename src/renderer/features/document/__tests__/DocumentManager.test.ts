@@ -3,7 +3,6 @@
  *
  * Comprehensive tests for the DocumentManager class covering:
  * - Initialization with DocumentState
- * - Legacy body fallback
  * - Node lookups
  * - Quote operations
  * - Tree traversal
@@ -188,30 +187,12 @@ describe('DocumentManager', () => {
       const manager = new DocumentManager(state);
 
       expect(manager.getState()).toBe(state);
-      expect(manager.getIsLegacy()).toBe(false);
-    });
-
-    it('should create manager with legacy body', () => {
-      const body = 'First paragraph.\n\nSecond paragraph.';
-      const manager = new DocumentManager(null, body);
-
-      expect(manager.getIsLegacy()).toBe(true);
-      expect(manager.getState().root.children.length).toBe(2);
     });
 
     it('should create empty manager when no input provided', () => {
       const manager = new DocumentManager(null);
 
-      expect(manager.getIsLegacy()).toBe(false);
       expect(manager.getState().root.children.length).toBe(0);
-    });
-
-    it('should prioritize DocumentState over legacy body', () => {
-      const state = createTestDocumentState();
-      const manager = new DocumentManager(state, 'This should be ignored');
-
-      expect(manager.getIsLegacy()).toBe(false);
-      expect(manager.getTitle()).toBe('Test Sermon');
     });
   });
 
@@ -223,16 +204,16 @@ describe('DocumentManager', () => {
 
     it('should use documentState when available', () => {
       const state = createTestDocumentState();
-      const manager = createDocumentManager({ documentState: state, body: 'ignored' });
+      const manager = createDocumentManager({ documentState: state });
 
       expect(manager.getTitle()).toBe('Test Sermon');
     });
 
-    it('should fall back to body when documentState is missing', () => {
-      const manager = createDocumentManager({ body: 'Test body.\n\nSecond paragraph.' });
+    it('should create empty manager when no documentState provided', () => {
+      const manager = createDocumentManager({});
 
-      expect(manager.getIsLegacy()).toBe(true);
-      expect(manager.getParagraphs().length).toBe(2);
+      // Without documentState, creates empty document
+      expect(manager.getState().root.children.length).toBe(0);
     });
   });
 
@@ -519,34 +500,4 @@ describe('DocumentManager', () => {
     });
   });
 
-  describe('legacy conversion', () => {
-    it('should convert simple body to document state', () => {
-      const body = 'First paragraph.\n\nSecond paragraph.\n\nThird paragraph.';
-      const manager = new DocumentManager(null, body);
-
-      const paragraphs = manager.getParagraphs();
-      expect(paragraphs.length).toBe(3);
-
-      const text = manager.extractText();
-      expect(text).toContain('First paragraph.');
-      expect(text).toContain('Second paragraph.');
-      expect(text).toContain('Third paragraph.');
-    });
-
-    it('should handle empty body', () => {
-      const manager = new DocumentManager(null, '');
-      expect(manager.getParagraphs().length).toBe(0);
-    });
-
-    it('should handle body with only whitespace', () => {
-      const manager = new DocumentManager(null, '   \n\n   ');
-      expect(manager.getParagraphs().length).toBe(0);
-    });
-
-    it('should handle single paragraph', () => {
-      const manager = new DocumentManager(null, 'Single paragraph only.');
-      expect(manager.getParagraphs().length).toBe(1);
-      expect(manager.getWordCount()).toBe(3);
-    });
-  });
 });

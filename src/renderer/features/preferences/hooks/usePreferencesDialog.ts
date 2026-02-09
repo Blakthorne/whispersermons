@@ -24,7 +24,7 @@ interface UsePreferencesDialogReturn {
 
 export function usePreferencesDialog(): UsePreferencesDialogReturn {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<PreferencesTab>('transcription');
+  const [activeTab, setActiveTab] = useState<PreferencesTab>('general');
   
   const openDialog = useCallback(() => {
     setIsOpen(true);

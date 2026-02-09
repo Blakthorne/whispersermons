@@ -141,13 +141,10 @@ export function DocumentRenderer({
   quoteOptions,
   emptyPlaceholder,
 }: DocumentRendererProps): React.JSX.Element {
-  const { hasDocument, isLegacy } = useDocument();
+  const { hasDocument } = useDocument();
 
   // Build container class
   const containerClasses = ['document-renderer', 'document-renderer--readonly'];
-  if (isLegacy) {
-    containerClasses.push('document-renderer--legacy');
-  }
   if (className) {
     containerClasses.push(className);
   }

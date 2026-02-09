@@ -20,7 +20,7 @@ const loadHistoryFromStorage = (): { history: HistoryItem[]; legacyNonSermon: Hi
 
     parsed.forEach((item) => {
       if (item.isSermon === false) {
-        legacyNonSermon.push({ ...item, isLegacyNonSermon: true });
+        legacyNonSermon.push(item);
       } else {
         history.push(item);
       }

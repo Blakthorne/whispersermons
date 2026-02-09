@@ -1,6 +1,5 @@
 import React from 'react';
 import { FileDropZone, FileQueue, PipelineProgress } from '../../../features/transcription';
-import { SettingsPanel } from '../../../features/settings';
 import { useAppTranscription } from '../../../contexts';
 import { useFFmpegStatus } from '../../../hooks';
 import { TranscriptionActions } from './TranscriptionActions';
@@ -13,7 +12,6 @@ function LeftPanel(): React.JSX.Element {
     settings,
     isTranscribing,
     setSettings,
-    setModelDownloaded,
     queue,
     selectedQueueItemId,
     handleFilesSelect,
@@ -59,9 +57,7 @@ function LeftPanel(): React.JSX.Element {
             <span className="sermon-toggle-checkmark" />
             <span className="sermon-toggle-text">Test Mode (Skip Whisper)</span>
           </label>
-          <p className="sermon-toggle-description">
-            Injects test transcript. Disables file input.
-          </p>
+          <p className="sermon-toggle-description">Injects test transcript. Disables file input.</p>
         </div>
       )}
 
@@ -94,13 +90,6 @@ function LeftPanel(): React.JSX.Element {
           }
         />
       )}
-
-      <SettingsPanel
-        settings={settings}
-        onChange={setSettings}
-        disabled={isTranscribing || !!settings.testMode}
-        onModelStatusChange={setModelDownloaded}
-      />
 
       <TranscriptionActions isFFmpegAvailable={isFFmpegAvailable} />
 

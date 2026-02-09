@@ -606,7 +606,7 @@ export interface DocumentImportedEvent extends BaseEvent {
   /** The imported document */
   document: DocumentRootNode;
   /** Original format */
-  sourceFormat: 'html' | 'markdown' | 'plain_text' | 'legacy_sermon';
+  sourceFormat: 'html' | 'markdown' | 'plain_text';
   /** Whether this replaced existing content */
   replacedExisting: boolean;
 }

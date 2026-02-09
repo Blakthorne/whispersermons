@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import type { AppPreferences, WhisperAdvancedSettings } from '../types';
+import type { AppPreferences, GeneralSettings, WhisperAdvancedSettings } from '../types';
 import { DEFAULT_PREFERENCES, PREFERENCES_VERSION } from '../constants';
 import { getStorageItem, setStorageItem, STORAGE_KEYS } from '../../../utils/storage';
 import { logger } from '../../../services/logger';
@@ -16,8 +16,12 @@ interface UsePreferencesReturn {
   preferences: AppPreferences;
   /** Whether preferences have been loaded from storage */
   isLoaded: boolean;
+  /** Update general settings (model, language) */
+  updateGeneralSettings: (updates: Partial<GeneralSettings>) => void;
   /** Update Whisper advanced settings */
   updateWhisperSettings: (updates: Partial<WhisperAdvancedSettings>) => void;
+  /** Reset general settings to defaults */
+  resetGeneralSettings: () => void;
   /** Reset Whisper settings to defaults */
   resetWhisperSettings: () => void;
   /** Reset all preferences to defaults */
@@ -56,6 +60,10 @@ function validatePreferences(prefs: AppPreferences): AppPreferences {
   return {
     ...DEFAULT_PREFERENCES,
     ...prefs,
+    general: {
+      ...DEFAULT_PREFERENCES.general,
+      ...prefs.general,
+    },
     whisper: {
       ...DEFAULT_PREFERENCES.whisper,
       ...whisper,
@@ -108,6 +116,17 @@ export function usePreferences(): UsePreferencesReturn {
     }
   }, []);
   
+  const updateGeneralSettings = useCallback((updates: Partial<GeneralSettings>) => {
+    savePreferences({
+      ...preferences,
+      general: {
+        ...preferences.general,
+        ...updates,
+      },
+    });
+    logger.info('General settings updated', { updates: Object.keys(updates) });
+  }, [preferences, savePreferences]);
+  
   const updateWhisperSettings = useCallback((updates: Partial<WhisperAdvancedSettings>) => {
     savePreferences({
       ...preferences,
@@ -117,6 +136,14 @@ export function usePreferences(): UsePreferencesReturn {
       },
     });
     logger.info('Whisper settings updated', { updates: Object.keys(updates) });
+  }, [preferences, savePreferences]);
+  
+  const resetGeneralSettings = useCallback(() => {
+    savePreferences({
+      ...preferences,
+      general: DEFAULT_PREFERENCES.general,
+    });
+    logger.info('General settings reset to defaults');
   }, [preferences, savePreferences]);
   
   const resetWhisperSettings = useCallback(() => {
@@ -135,7 +162,9 @@ export function usePreferences(): UsePreferencesReturn {
   return {
     preferences,
     isLoaded,
+    updateGeneralSettings,
     updateWhisperSettings,
+    resetGeneralSettings,
     resetWhisperSettings,
     resetAllPreferences,
   };

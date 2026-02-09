@@ -98,9 +98,31 @@ export interface WhisperAdvancedSettings {
 }
 
 /**
+ * General app settings (model and language)
+ */
+export interface GeneralSettings {
+  /**
+   * Selected Whisper model
+   * Default: 'base'
+   */
+  model: import('../../../shared/types').WhisperModelName;
+  
+  /**
+   * Transcription language
+   * Default: 'auto'
+   */
+  language: import('../../../shared/types').LanguageCode;
+}
+
+/**
  * All user preferences stored in the app
  */
 export interface AppPreferences {
+  /**
+   * General settings (model, language)
+   */
+  general: GeneralSettings;
+  
   /**
    * Advanced Whisper transcription settings
    */
@@ -115,4 +137,4 @@ export interface AppPreferences {
 /**
  * Active tab in the Preferences dialog
  */
-export type PreferencesTab = 'transcription';
+export type PreferencesTab = 'general' | 'transcription';

@@ -6,7 +6,6 @@
  * - Node lookups by ID (O(1) via nodeIndex)
  * - Passage lookups by reference or book (Bible passages)
  * - Tree traversal utilities
- * - Backward compatibility with legacy body-only format
  * - Statistics and word count
  *
  * The DocumentManager is read-only in Phase B. Phase C will add mutation methods.
@@ -26,7 +25,6 @@ import type {
   PassageNode,
   InterjectionNode,
   NodeId,
-  NodeIndex,
   PassageMetadata,
 } from '../../../shared/documentModel';
 
@@ -87,18 +85,6 @@ export interface TextExtractionOptions {
 }
 
 /**
- * Result from legacy conversion.
- */
-export interface LegacyConversionResult {
-  /** The converted DocumentState */
-  documentState: DocumentState;
-  /** Whether this was converted from legacy format */
-  isLegacyConversion: boolean;
-  /** Original body text if legacy */
-  originalBody?: string;
-}
-
-/**
  * Creates a UUID v4.
  */
 function createUUID(): string {
@@ -114,27 +100,19 @@ function createUUID(): string {
  */
 export class DocumentManager {
   private readonly state: DocumentState;
-  private readonly isLegacy: boolean;
   private cachedStatistics: DocumentStatistics | null = null;
 
   /**
    * Create a new DocumentManager.
    *
-   * @param documentState - The DocumentState to manage (or null for legacy fallback)
-   * @param legacyBody - Optional legacy body text for backward compatibility
+   * @param documentState - The DocumentState to manage (or null for empty document)
    */
-  constructor(documentState: DocumentState | undefined | null, legacyBody?: string) {
+  constructor(documentState: DocumentState | undefined | null) {
     if (documentState) {
       this.state = documentState;
-      this.isLegacy = false;
-    } else if (legacyBody) {
-      // Convert legacy body-only format to DocumentState
-      this.state = this.convertLegacyToDocumentState(legacyBody);
-      this.isLegacy = true;
     } else {
       // Create empty document
       this.state = this.createEmptyDocumentState();
-      this.isLegacy = false;
     }
   }
 
@@ -161,13 +139,6 @@ export class DocumentManager {
    */
   getVersion(): number {
     return this.state.version;
-  }
-
-  /**
-   * Check if this document was converted from legacy format.
-   */
-  getIsLegacy(): boolean {
-    return this.isLegacy;
   }
 
   /**
@@ -595,108 +566,22 @@ export class DocumentManager {
   // ============================================================================
 
   /**
-   * Get extracted references array (for backward compatibility).
+   * Get extracted references array.
    */
   getReferences(): string[] {
     return this.state.extracted.references;
   }
 
   /**
-   * Get extracted tags array (for backward compatibility).
+   * Get extracted tags array.
    */
   getTags(): string[] {
     return this.state.extracted.tags;
   }
 
   // ============================================================================
-  // PRIVATE: LEGACY CONVERSION
+  // PRIVATE HELPERS
   // ============================================================================
-
-  /**
-   * Convert legacy body-only format to DocumentState.
-   */
-  private convertLegacyToDocumentState(body: string): DocumentState {
-    const now = new Date().toISOString();
-    const rootId = createUUID();
-
-    // Split into paragraphs
-    const paragraphs = body
-      .split(/\n\n+/)
-      .map((p) => p.trim())
-      .filter(Boolean);
-
-    // Build children
-    const children: ParagraphNode[] = paragraphs.map((text) => {
-      const paragraphId = createUUID();
-      const textId = createUUID();
-
-      const textNode: TextNode = {
-        id: textId,
-        type: 'text',
-        version: 1,
-        updatedAt: now,
-        content: text,
-      };
-
-      return {
-        id: paragraphId,
-        type: 'paragraph',
-        version: 1,
-        updatedAt: now,
-        children: [textNode],
-      };
-    });
-
-    // Build root
-    const root: DocumentRootNode = {
-      id: rootId,
-      type: 'document',
-      version: 1,
-      updatedAt: now,
-      children,
-    };
-
-    // Build node index
-    const nodeIndex: NodeIndex = {
-      [rootId]: { node: root, parentId: null, path: [] },
-    };
-
-    children.forEach((paragraph) => {
-      nodeIndex[paragraph.id] = {
-        node: paragraph,
-        parentId: rootId,
-        path: [rootId],
-      };
-
-      paragraph.children.forEach((textNode) => {
-        nodeIndex[textNode.id] = {
-          node: textNode,
-          parentId: paragraph.id,
-          path: [rootId, paragraph.id],
-        };
-      });
-    });
-
-    return {
-      version: 1,
-      root,
-      eventLog: [],
-      undoStack: [],
-      redoStack: [],
-      nodeIndex,
-      passageIndex: {
-        byReference: {},
-        byBook: {},
-        all: [],
-      },
-      extracted: {
-        references: [],
-        tags: [],
-      },
-      lastModified: now,
-      createdAt: now,
-    };
-  }
 
   /**
    * Create an empty DocumentState.
@@ -746,13 +631,12 @@ export class DocumentManager {
  */
 export function createDocumentManager(sermonDocument: {
   documentState?: DocumentState;
-  body?: string;
 } | null): DocumentManager {
   if (!sermonDocument) {
     return new DocumentManager(null);
   }
 
-  return new DocumentManager(sermonDocument.documentState, sermonDocument.body);
+  return new DocumentManager(sermonDocument.documentState);
 }
 
 export default DocumentManager;

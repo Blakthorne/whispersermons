@@ -1,163 +1,172 @@
 #!/usr/bin/env python3
 """
-End-to-end test simulating the full pipeline with semantic paragraph breaks.
+End-to-end test for the integrated pipeline.
 
-This test reproduces the original bug where passage boundaries were correct
-when calculated from raw text, but became incorrect after paragraph breaks
-were added by segment_paragraphs().
+Tests that the new pipeline correctly:
+1. Tokenizes raw text into sentences with character positions
+2. Groups sentences into paragraph groups
+3. Maps passage boundaries to paragraph groups (no remapping needed)
+4. Builds the AST with correct passage content
+
+All positions reference the immutable raw_text. No remapping needed.
 """
 
 import sys
-import json
+import re
+from pathlib import Path
 
-# The scenario: 
-# 1. Whisper produces raw transcript (no paragraph breaks)
-# 2. Bible quote processor finds passage boundaries in raw text
-# 3. segment_paragraphs() adds paragraph breaks (changes character positions)
-# 4. AST builder should use REMAPPED boundaries to extract correct content
+sys.path.insert(0, str(Path(__file__).parent))
 
-def test_full_pipeline():
-    """Simulate the full whisper_bridge pipeline."""
-    print("="*70)
-    print("END-TO-END PASSAGE BOUNDARY TEST")
-    print("="*70)
+from main import tokenize_sentences, segment_into_paragraph_groups, SentenceInfo
+from bible_quote_processor import QuoteBoundary, BibleReference
+from ast_builder import build_ast
+
+
+def create_quote(raw_text, verse_pattern, book, chapter, verse_start, verse_text, confidence=0.97):
+    """Helper to create a QuoteBoundary from a raw_text pattern match."""
+    match = re.search(verse_pattern, raw_text)
+    if not match:
+        raise ValueError(f"Pattern '{verse_pattern}' not found in text")
+
+    ref = BibleReference(
+        book=book,
+        chapter=chapter,
+        verse_start=verse_start,
+        original_text=f'{book} {chapter}:{verse_start}'
+    )
+
+    return QuoteBoundary(
+        start_pos=match.start(),
+        end_pos=match.end(),
+        reference=ref,
+        verse_text=verse_text,
+        confidence=confidence
+    )
+
+
+def test_integrated_pipeline():
+    """Test the full integrated pipeline with no text mutation."""
+    print("=" * 70)
+    print("END-TO-END INTEGRATED PIPELINE TEST")
+    print("=" * 70)
     print()
-    
-    # Step 1: Raw transcript (as Whisper would produce it)
-    raw_transcript = (
+
+    # Raw transcript (as Whisper would produce - no paragraph breaks)
+    raw_text = (
         "You have much to give that metaphorically will put a smile on his face. "
         "Romans 12 one says Paul writes I beseech you therefore brethren by the "
         "mercies of God that you present your bodies a living sacrifice wholly "
         "acceptable unto God which is your reasonable service. What is Paul saying "
-        "here? He's telling us to offer ourselves completely to God."
+        "here? He is telling us to offer ourselves completely to God."
     )
-    
-    print(f"Step 1: Raw transcript length = {len(raw_transcript)} chars")
+
+    print(f"Step 1: Raw text length = {len(raw_text)} chars")
+
+    # Step 2: Tokenize into sentences
+    sentences = tokenize_sentences(raw_text)
+    print(f"Step 2: Tokenized into {len(sentences)} sentences")
+    for s in sentences:
+        preview = s.text[:50] + '...' if len(s.text) > 50 else s.text
+        print(f"  [{s.start_pos}-{s.end_pos}] '{preview}'")
     print()
-    
-    # Step 2: Bible quote processor detects quote boundaries in RAW text
-    # The verse starts at "I beseech" and ends at "service."
-    import re
-    start_match = re.search(r'I beseech', raw_transcript)
-    end_match = re.search(r'reasonable service\.', raw_transcript)
-    
-    if not start_match or not end_match:
-        print("ERROR: Could not find verse in raw transcript")
-        return False
-    
-    raw_start = start_match.start()
-    raw_end = end_match.end()
-    
-    from bible_quote_processor import QuoteBoundary, BibleReference
-    
-    ref = BibleReference(
-        book='Romans', 
-        chapter=12, 
-        verse_start=1, 
-        original_text='Romans 12 one', 
-        position=70
-    )
-    
-    quote = QuoteBoundary(
-        start_pos=raw_start,
-        end_pos=raw_end,
-        reference=ref,
-        verse_text="I beseech you therefore, brethren, by the mercies of God, that ye present your bodies a living sacrifice, holy, acceptable unto God, which is your reasonable service.",
+
+    # Step 3: Create quote boundary (positions in raw_text)
+    verse_pattern = r'I beseech you therefore brethren.*?reasonable service\.'
+    quote = create_quote(
+        raw_text, verse_pattern,
+        book='Romans', chapter=12, verse_start=1,
+        verse_text="I beseech you therefore brethren by the mercies of God",
         confidence=0.97
     )
-    
-    print(f"Step 2: Quote boundary in RAW text = [{quote.start_pos}, {quote.end_pos}]")
-    print(f"  Content: '{raw_transcript[quote.start_pos:quote.end_pos]}'")
+
+    print(f"Step 3: Quote boundary = [{quote.start_pos}, {quote.end_pos}]")
+    print(f"  Content: '{raw_text[quote.start_pos:quote.end_pos][:60]}...'")
     print()
-    
-    # Step 3: Paragraph segmentation adds breaks
-    # Simulating what segment_paragraphs would do:
-    # It adds \n\n between semantic units (typically after sentence-ending periods)
-    paragraphed_transcript = (
-        "You have much to give that metaphorically will put a smile on his face.\n\n"
-        "Romans 12 one says Paul writes I beseech you therefore brethren by the "
-        "mercies of God that you present your bodies a living sacrifice wholly "
-        "acceptable unto God which is your reasonable service.\n\n"
-        "What is Paul saying here?\n\n"
-        "He's telling us to offer ourselves completely to God."
+
+    # Step 4: Segment into paragraph groups
+    paragraph_groups = segment_into_paragraph_groups(
+        sentences,
+        quote_boundaries=[quote],
+        min_sentences_per_paragraph=2,
+        similarity_threshold=0.45
     )
-    
-    print(f"Step 3: Paragraphed transcript length = {len(paragraphed_transcript)} chars")
-    print(f"  (Added {len(paragraphed_transcript) - len(raw_transcript)} chars for paragraph breaks)")
+
+    print(f"Step 4: {len(paragraph_groups)} paragraph groups")
+    for i, group in enumerate(paragraph_groups):
+        group_text = ' '.join(sentences[idx].text for idx in group)
+        preview = group_text[:60] + '...' if len(group_text) > 60 else group_text
+        print(f"  Group {i}: sentences {group} -> '{preview}'")
     print()
-    
-    # Step 4: Remap quote boundaries
-    from whisper_bridge import remap_quote_boundaries_for_paragraphed_text
-    
-    remapped = remap_quote_boundaries_for_paragraphed_text(
-        raw_transcript,
-        paragraphed_transcript,
-        [quote]
+
+    # Step 5: Build AST (no remapping needed!)
+    result = build_ast(
+        raw_text=raw_text,
+        sentences=sentences,
+        paragraph_groups=paragraph_groups,
+        quote_boundaries=[quote],
+        title="E2E Test Sermon",
+        debug=True
     )
-    
-    new_quote = remapped[0]
-    
-    print(f"Step 4: Remapped quote boundary = [{new_quote.start_pos}, {new_quote.end_pos}]")
-    extracted = paragraphed_transcript[new_quote.start_pos:new_quote.end_pos]
-    print(f"  Extracted content: '{extracted}'")
+
+    print(f"Step 5: AST built - {result.processing_metadata.paragraph_count} paragraphs, "
+          f"{result.processing_metadata.passage_count} passages")
+
     print()
-    
-    # Verification
-    print("="*70)
+    print("=" * 70)
     print("VERIFICATION")
-    print("="*70)
-    
-    expected_content = (
-        "I beseech you therefore brethren by the mercies of God that you present "
-        "your bodies a living sacrifice wholly acceptable unto God which is your "
-        "reasonable service."
-    )
-    
-    # Check 1: Does extracted text start with "I beseech"?
-    if extracted.startswith("I beseech"):
-        print("✅ PASS: Extracted text starts with 'I beseech'")
-        start_ok = True
+    print("=" * 70)
+
+    root = result.document_state.root
+    passage_content = None
+    for child in root.children:
+        if child.type == 'paragraph':
+            for sub in child.children:
+                if sub.type == 'passage':
+                    passage_content = ""
+                    for text_child in sub.children:
+                        if hasattr(text_child, 'content'):
+                            passage_content += text_child.content
+
+    if passage_content is None:
+        print("FAIL: No passage found in AST")
+        return False
+
+    print(f"Passage content: '{passage_content[:80]}...'")
+
+    all_passed = True
+
+    if passage_content.startswith("I beseech"):
+        print("PASS: Passage starts with 'I beseech'")
     else:
-        print(f"❌ FAIL: Extracted text does NOT start with 'I beseech'")
-        print(f"         Starts with: '{extracted[:30]}...'")
-        start_ok = False
-    
-    # Check 2: Does extracted text end with "reasonable service."?
-    if extracted.rstrip().endswith("reasonable service."):
-        print("✅ PASS: Extracted text ends with 'reasonable service.'")
-        end_ok = True
+        print(f"FAIL: Passage starts with '{passage_content[:30]}'")
+        all_passed = False
+
+    if "reasonable service." in passage_content:
+        print("PASS: Passage contains 'reasonable service.'")
     else:
-        print(f"❌ FAIL: Extracted text does NOT end with 'reasonable service.'")
-        print(f"         Ends with: '...{extracted[-40:]}'")
-        end_ok = False
-    
-    # Check 3: Does extracted text contain "his face"? (It should NOT)
-    if "his face" in extracted:
-        print("❌ FAIL: Extracted text INCORRECTLY includes 'his face'")
-        no_preceding = False
+        print("FAIL: Passage does not contain 'reasonable service.'")
+        all_passed = False
+
+    if "his face" not in passage_content:
+        print("PASS: Passage does NOT include preceding text")
     else:
-        print("✅ PASS: Extracted text does NOT include preceding text 'his face'")
-        no_preceding = True
-    
-    # Check 4: Does extracted text contain "What is Paul"? (It should NOT)
-    if "What is Paul" in extracted:
-        print("❌ FAIL: Extracted text INCORRECTLY includes 'What is Paul'")
-        no_following = False
+        print("FAIL: Passage incorrectly includes 'his face'")
+        all_passed = False
+
+    if "What is Paul" not in passage_content:
+        print("PASS: Passage does NOT include following text")
     else:
-        print("✅ PASS: Extracted text does NOT include following text 'What is Paul'")
-        no_following = True
-    
-    print()
-    
-    all_passed = start_ok and end_ok and no_preceding and no_following
+        print("FAIL: Passage incorrectly includes 'What is Paul'")
+        all_passed = False
+
     if all_passed:
-        print("🎉 ALL CHECKS PASSED! The boundary remapping fix is working correctly.")
+        print("\nALL CHECKS PASSED!")
     else:
-        print("💥 SOME CHECKS FAILED. The fix needs more work.")
-    
+        print("\nSOME CHECKS FAILED.")
+
     return all_passed
 
 
 if __name__ == "__main__":
-    success = test_full_pipeline()
+    success = test_integrated_pipeline()
     sys.exit(0 if success else 1)

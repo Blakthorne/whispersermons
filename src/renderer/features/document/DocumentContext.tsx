@@ -29,9 +29,6 @@ export interface DocumentContextValue {
   /** Whether a document is loaded */
   hasDocument: boolean;
 
-  /** Whether this is a legacy (body-only) document */
-  isLegacy: boolean;
-
   // --- Quick accessors (memoized) ---
 
   /** Document title */
@@ -95,7 +92,6 @@ export interface DocumentContextValue {
 const defaultContextValue: DocumentContextValue = {
   manager: null,
   hasDocument: false,
-  isLegacy: false,
   title: undefined,
   biblePassage: undefined,
   speaker: undefined,
@@ -160,7 +156,6 @@ export function DocumentProvider({
     return {
       manager,
       hasDocument: true,
-      isLegacy: manager.getIsLegacy(),
       title: manager.getTitle(),
       biblePassage: manager.getBiblePassage(),
       speaker: manager.getSpeaker(),

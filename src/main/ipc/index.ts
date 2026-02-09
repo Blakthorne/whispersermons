@@ -236,7 +236,6 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
             rawTranscript: result.sermon.rawTranscript || result.text || '',
             documentState: result.sermon.documentState,
             processingMetadata: result.sermon.processingMetadata,
-            astError: result.sermon.astError,
           },
         } as TranscriptionResult & { sermonDocument: import('../../shared/types').SermonDocument };
       }
@@ -430,7 +429,6 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null) {
               // Include AST document state (quote boundaries, interjections, etc.)
               documentState: result.sermon.documentState,
               processingMetadata: result.sermon.processingMetadata,
-              astError: result.sermon.astError,
             },
           };
         }
