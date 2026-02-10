@@ -56,6 +56,45 @@ type DragHandle = 'start' | 'end' | null;
 // ============================================================================
 
 /**
+ * Get the visible bounds of an element by intersecting with all
+ * ancestor clipping containers (overflow: hidden/scroll/auto).
+ * This accounts for scrollable parents and overflow-hidden wrappers.
+ */
+function getVisibleBounds(element: HTMLElement): DOMRect {
+  const rect = element.getBoundingClientRect();
+  let top = rect.top;
+  let left = rect.left;
+  let bottom = rect.bottom;
+  let right = rect.right;
+
+  let current = element.parentElement;
+  while (current) {
+    const style = window.getComputedStyle(current);
+    const overflowX = style.overflowX;
+    const overflowY = style.overflowY;
+
+    if (
+      overflowX === 'hidden' || overflowX === 'scroll' || overflowX === 'auto' ||
+      overflowY === 'hidden' || overflowY === 'scroll' || overflowY === 'auto'
+    ) {
+      const parentRect = current.getBoundingClientRect();
+      top = Math.max(top, parentRect.top);
+      left = Math.max(left, parentRect.left);
+      bottom = Math.min(bottom, parentRect.bottom);
+      right = Math.min(right, parentRect.right);
+
+      if (top >= bottom || left >= right) {
+        return new DOMRect(0, 0, 0, 0);
+      }
+    }
+
+    current = current.parentElement;
+  }
+
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
+/**
  * Find the TipTap/ProseMirror editor container
  */
 function findEditorContainer(element: HTMLElement): HTMLElement | null {
@@ -67,6 +106,28 @@ function findEditorContainer(element: HTMLElement): HTMLElement | null {
       current.classList.contains('editor-content') ||
       current.getAttribute('contenteditable') === 'true'
     ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+/**
+ * Find the scrollable container that clips the editor content.
+ * This is typically `.sermon-editor-content` which has `overflow-y: auto`.
+ * The highlights must be clipped to this container's bounds, not the inner editor.
+ */
+function findScrollableContainer(element: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = element;
+  while (current) {
+    // Check for sermon-editor-content specifically (our scrollable container)
+    if (current.classList.contains('sermon-editor-content')) {
+      return current;
+    }
+    // Generic fallback: check for overflow scroll/auto
+    const style = window.getComputedStyle(current);
+    if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
       return current;
     }
     current = current.parentElement;
@@ -434,8 +495,11 @@ export function QuoteBoundaryEditor({
   enableWordSnapping = true,
   snapThreshold: _snapThreshold = 20,
 }: QuoteBoundaryEditorProps): React.JSX.Element | null {
-  // Editor container reference
+  // Editor container reference (ProseMirror element)
   const editorContainerRef = useRef<HTMLElement | null>(null);
+  
+  // Scrollable container reference (sermon-editor-content - for bounds clipping)
+  const scrollableContainerRef = useRef<HTMLElement | null>(null);
 
   // Current selection state
   const [selection, setSelection] = useState<SelectionRange | null>(null);
@@ -446,6 +510,15 @@ export function QuoteBoundaryEditor({
   // Refs for handle elements
   const startHandleRef = useRef<HTMLDivElement>(null);
   const endHandleRef = useRef<HTMLDivElement>(null);
+
+  // Refs for highlight elements (for direct DOM manipulation during scroll)
+  const highlightContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Ref to track pending animation frame (for scroll updates)
+  const animationFrameRef = useRef<number | null>(null);
+  
+  // Selection ref for scroll-based position updates (avoids React re-renders)
+  const selectionRef = useRef<SelectionRange | null>(null);
 
   // Debounce timer
   const debounceTimerRef = useRef<number | null>(null);
@@ -466,9 +539,13 @@ export function QuoteBoundaryEditor({
   useEffect(() => {
     if (!isActive || !quoteElement) return;
 
-    // Find editor container
+    // Find editor container (ProseMirror)
     const container = findEditorContainer(quoteElement);
     editorContainerRef.current = container;
+
+    // Find scrollable container for bounds clipping
+    const scrollContainer = findScrollableContainer(quoteElement);
+    scrollableContainerRef.current = scrollContainer;
 
     if (!container) {
       console.warn('[QuoteBoundaryEditor] Could not find editor container');
@@ -501,16 +578,117 @@ export function QuoteBoundaryEditor({
     };
 
     setSelection({ start: startPos, end: endPos });
+    selectionRef.current = { start: startPos, end: endPos };
   }, [isActive, quoteElement]);
 
-  // Handle scroll events to update handle positions
+  // Sync selection ref when state changes (for drag operations that update state)
+  useEffect(() => {
+    selectionRef.current = selection;
+  }, [selection]);
+
+  // Handle scroll events to update handle positions using RAF for smooth updates
   useEffect(() => {
     if (!isActive) return;
 
-    // Force update function utilizing state setter with spread to trigger re-render
-    const handleScroll = () => {
-      setSelection((prev) => (prev ? { ...prev } : null));
+    // Update positions directly via refs without triggering React re-renders
+    const updatePositions = () => {
+      const sel = selectionRef.current;
+      if (!sel) return;
+
+      const scrollContainer = scrollableContainerRef.current;
+      const editorBounds = scrollContainer
+        ? scrollContainer.getBoundingClientRect()
+        : editorContainerRef.current
+          ? getVisibleBounds(editorContainerRef.current)
+          : undefined;
+
+      // Update highlight container clip-path
+      if (highlightContainerRef.current && editorBounds) {
+        highlightContainerRef.current.style.clipPath = 
+          `inset(${editorBounds.top}px ${window.innerWidth - editorBounds.right}px ${window.innerHeight - editorBounds.bottom}px ${editorBounds.left}px)`;
+      }
+
+      // Get RAW position rects for highlights (unfiltered - we'll handle visibility per-element)
+      const rawHighlightRects = getSelectionRects(sel.start, sel.end);
+
+      // Update highlight elements via direct DOM manipulation
+      const highlightContainer = highlightContainerRef.current;
+      if (highlightContainer) {
+        const highlightElements = highlightContainer.querySelectorAll('.boundary-highlight-line');
+        highlightElements.forEach((el, index) => {
+          if (!(el instanceof HTMLElement)) return;
+          
+          const rawRect = rawHighlightRects[index];
+          if (!rawRect || !editorBounds) {
+            // No rect for this element - hide it
+            el.style.visibility = 'hidden';
+            return;
+          }
+
+          // Check if rect is completely outside editor bounds (not just partially clipped)
+          const isCompletelyAbove = rawRect.bottom <= editorBounds.top;
+          const isCompletelyBelow = rawRect.top >= editorBounds.bottom;
+          const isCompletelyLeft = rawRect.right <= editorBounds.left;
+          const isCompletelyRight = rawRect.left >= editorBounds.right;
+
+          if (isCompletelyAbove || isCompletelyBelow || isCompletelyLeft || isCompletelyRight) {
+            // Completely out of view - hide it entirely
+            el.style.visibility = 'hidden';
+            return;
+          }
+
+          // Partially or fully in view - show it at its actual position (no clamping)
+          // The clip-path on the container will handle clipping
+          el.style.transform = `translate3d(${rawRect.left}px, ${rawRect.top}px, 0)`;
+          el.style.width = `${rawRect.width}px`;
+          el.style.height = `${rawRect.height}px`;
+          el.style.visibility = 'visible';
+        });
+      }
+
+      // Update handle positions
+      const startRect = getPositionRect(sel.start);
+      const endRect = getPositionRect(sel.end);
+
+      const isStartVisible = startRect && editorBounds
+        ? startRect.top >= editorBounds.top && startRect.bottom <= editorBounds.bottom
+        : true;
+      const isEndVisible = endRect && editorBounds
+        ? endRect.top >= editorBounds.top && endRect.bottom <= editorBounds.bottom
+        : true;
+
+      if (startHandleRef.current) {
+        if (startRect && isStartVisible) {
+          startHandleRef.current.style.transform = `translate3d(${startRect.left - 12}px, ${startRect.top}px, 0)`;
+          startHandleRef.current.style.height = `${startRect.height}px`;
+          startHandleRef.current.style.visibility = 'visible';
+        } else {
+          startHandleRef.current.style.visibility = 'hidden';
+        }
+      }
+
+      if (endHandleRef.current) {
+        if (endRect && isEndVisible) {
+          endHandleRef.current.style.transform = `translate3d(${endRect.right - 12}px, ${endRect.top}px, 0)`;
+          endHandleRef.current.style.height = `${endRect.height}px`;
+          endHandleRef.current.style.visibility = 'visible';
+        } else {
+          endHandleRef.current.style.visibility = 'hidden';
+        }
+      }
     };
+
+    const handleScroll = () => {
+      // Cancel any pending animation frame
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      // Schedule position update on next frame for smooth sync
+      animationFrameRef.current = requestAnimationFrame(updatePositions);
+    };
+
+    // Initial position update
+    updatePositions();
 
     // Use a passive listener on capture for better performance,
     // attached to window to catch any scrolling parent
@@ -520,8 +698,11 @@ export function QuoteBoundaryEditor({
     return () => {
       window.removeEventListener('scroll', handleScroll, { capture: true });
       window.removeEventListener('resize', handleScroll);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
-  }, [isActive]); // Rerender when selection changes to attach new closure if needed, though handleScroll creates fresh one anyway
+  }, [isActive]); // Only re-attach when isActive changes
 
   // Handle mouse down on drag handle
   const handleMouseDown = useCallback(
@@ -713,31 +894,33 @@ export function QuoteBoundaryEditor({
     return null;
   }
 
-  // Check bounds relative to editor container to handle clipping/scrolling
-  const editorBounds = editorContainerRef.current?.getBoundingClientRect();
+  // Compute visible bounds - prefer the scrollable container for accurate clipping
+  // The scrollable container (sermon-editor-content) is the actual viewport that clips content
+  // Fall back to computing from editor container with ancestor clipping
+  const scrollableContainer = scrollableContainerRef.current;
+  const editorBounds = scrollableContainer
+    ? scrollableContainer.getBoundingClientRect()
+    : editorContainerRef.current
+      ? getVisibleBounds(editorContainerRef.current)
+      : undefined;
 
-  // Get highlight rectangles and filter/clamp to editor bounds
-  const highlightRects = getSelectionRects(selection.start, selection.end)
-    .map((rect) => {
-      if (!editorBounds) return rect;
-
-      // Calculate intersection
-      const top = Math.max(rect.top, editorBounds.top);
-      const bottom = Math.min(rect.bottom, editorBounds.bottom);
-
-      // If no intersection, return null (filter out later)
-      if (top >= bottom) return null;
-
-      // Return clamped rect
-      return {
-        ...rect.toJSON(), // ensuring we have a plain object
-        top,
-        height: bottom - top,
-        left: rect.left,
-        width: rect.width,
-      };
-    })
-    .filter((rect): rect is DOMRect => rect !== null);
+  // Get ALL highlight rectangles (unfiltered) - visibility is controlled via CSS/DOM updates
+  // This ensures React renders all elements so DOM manipulation can update them on scroll
+  const rawHighlightRects = getSelectionRects(selection.start, selection.end);
+  
+  // Compute initial visibility for each rect (used for initial render only)
+  const highlightRectsWithVisibility = rawHighlightRects.map((rect) => {
+    if (!editorBounds) {
+      return { rect, isVisible: true };
+    }
+    // Check if completely outside bounds
+    const isCompletelyAbove = rect.bottom <= editorBounds.top;
+    const isCompletelyBelow = rect.top >= editorBounds.bottom;
+    const isCompletelyLeft = rect.right <= editorBounds.left;
+    const isCompletelyRight = rect.left >= editorBounds.right;
+    const isVisible = !isCompletelyAbove && !isCompletelyBelow && !isCompletelyLeft && !isCompletelyRight;
+    return { rect, isVisible };
+  });
 
   // Get handle positions
   const startRect = getPositionRect(selection.start);
@@ -755,38 +938,46 @@ export function QuoteBoundaryEditor({
       ? endRect.top >= editorBounds.top && endRect.bottom <= editorBounds.bottom
       : true;
 
+  // Build clip-path to ensure highlights don't visually overflow the editor area
+  // This is needed because the container has high z-index that paints over other UI
+  const clipPath = editorBounds
+    ? `inset(${editorBounds.top}px ${window.innerWidth - editorBounds.right}px ${window.innerHeight - editorBounds.bottom}px ${editorBounds.left}px)`
+    : undefined;
+
   // Render using portal
   const content = (
     <div
+      ref={highlightContainerRef}
       className={`quote-boundary-editor ${activeHandle ? 'dragging' : ''}`}
       onKeyDown={handleKeyDown}
       tabIndex={0}
       role="application"
       aria-label="Quote boundary editor. Drag handles to adjust selection. Arrow keys for fine control."
+      style={clipPath ? { clipPath } : undefined}
     >
-      {/* Text-flow highlight - one rectangle per line */}
-      {highlightRects.map((rect, index) => (
+      {/* Text-flow highlight - one rectangle per line, using transform for GPU-accelerated positioning */}
+      {/* Render ALL rects; visibility controlled here and updated via DOM manipulation on scroll */}
+      {highlightRectsWithVisibility.map(({ rect, isVisible }, index) => (
         <div
           key={index}
           className="boundary-highlight boundary-highlight-line"
           style={{
-            top: rect.top,
-            left: rect.left,
+            transform: `translate3d(${rect.left}px, ${rect.top}px, 0)`,
             width: rect.width,
             height: rect.height,
+            visibility: isVisible ? 'visible' : 'hidden',
           }}
         />
       ))}
 
-      {/* Start handle */}
+      {/* Start handle - using transform for GPU-accelerated positioning */}
       {startRect && isStartVisible && (
         <div
           ref={startHandleRef}
           className={`boundary-handle boundary-handle-start ${activeHandle === 'start' ? 'dragging' : ''}`}
           style={{
-            top: startRect.top, // Align with top of text
-            height: startRect.height, // Match text height
-            left: startRect.left - 12, // Center the 24px wide container (24/2 = 12)
+            transform: `translate3d(${startRect.left - 12}px, ${startRect.top}px, 0)`,
+            height: startRect.height,
           }}
           onMouseDown={handleMouseDown('start')}
           role="slider"
@@ -799,15 +990,14 @@ export function QuoteBoundaryEditor({
         </div>
       )}
 
-      {/* End handle */}
+      {/* End handle - using transform for GPU-accelerated positioning */}
       {endRect && isEndVisible && (
         <div
           ref={endHandleRef}
           className={`boundary-handle boundary-handle-end ${activeHandle === 'end' ? 'dragging' : ''}`}
           style={{
-            top: endRect.top, // Align with top of text
-            height: endRect.height, // Match text height
-            left: endRect.right - 12, // Center the 24px wide container
+            transform: `translate3d(${endRect.right - 12}px, ${endRect.top}px, 0)`,
+            height: endRect.height,
           }}
           onMouseDown={handleMouseDown('end')}
           role="slider"
