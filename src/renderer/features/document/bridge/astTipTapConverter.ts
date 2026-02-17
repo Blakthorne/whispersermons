@@ -406,23 +406,23 @@ function convertPassageToTipTap(
   options: ConversionOptions
 ): TipTapNode {
   const { preserveIds, includeMetadata } = options;
-  const content: TipTapNode[] = [];
-
-  // Convert children (TextNode and InterjectionNode)
+  
+  // Collect all text and interjection nodes inline
+  const inlineContent: TipTapNode[] = [];
   for (const child of node.children) {
     const converted = convertNodeToTipTap(child, options);
-    if (converted) {
-      // Wrap text nodes in paragraphs
-      if (converted.type === 'text') {
-        content.push({
-          type: 'paragraph',
-          content: [converted],
-        });
-      } else {
-        content.push(converted);
-      }
+    if (converted && converted.type === 'text') {
+      inlineContent.push(converted);
     }
   }
+
+  // Wrap all inline content in a single paragraph
+  const content: TipTapNode[] = inlineContent.length > 0 
+    ? [{
+        type: 'paragraph',
+        content: inlineContent,
+      }]
+    : [];
 
   // Build attrs with metadata for bible_passage extension
   const attrs: Record<string, unknown> = {};

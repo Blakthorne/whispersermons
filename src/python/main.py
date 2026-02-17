@@ -46,71 +46,18 @@ from embedding_model import encode_texts, load_model
 # Import Bible quote processor
 from bible_quote_processor import process_text, QuoteBoundary
 
+# Import sentence tokenization and prayer patterns from ast_builder (centralized location)
+from ast_builder import (
+    SentenceInfo,
+    tokenize_sentences,
+    PRAYER_START_PATTERNS,
+    AMEN_END_PATTERN
+)
+
 
 # ============================================================================
-# SENTENCE TOKENIZATION (immutable source text representation)
+# SENTENCE TOKENIZATION (now imported from ast_builder)
 # ============================================================================
-
-@dataclass
-class SentenceInfo:
-    """A sentence with its position in the original raw text.
-    
-    This is the fundamental unit of the integrated pipeline. By working with
-    sentence tokens instead of mutated text, we avoid all character offset
-    drift issues that arise from text modifications (adding paragraph breaks,
-    quotation marks, etc.).
-    """
-    index: int           # Sentence index (0-based)
-    text: str            # The sentence text
-    start_pos: int       # Character start position in raw_text
-    end_pos: int         # Character end position in raw_text
-
-
-def tokenize_sentences(text: str) -> List[SentenceInfo]:
-    """
-    Split raw text into sentence tokens with character positions.
-    
-    Uses the same sentence-splitting regex as paragraph segmentation to ensure
-    consistency. Each SentenceInfo records its position in the ORIGINAL text,
-    which is the single source of truth for all downstream operations.
-    
-    Args:
-        text: Raw text to tokenize (NOT modified text)
-    
-    Returns:
-        List of SentenceInfo with positions in original text
-    """
-    stripped = text.strip()
-    if not stripped:
-        return []
-    
-    # Split into sentences using the same regex as segment_into_paragraphs
-    sentence_texts = re.split(r'(?<=[.!?])\s+', stripped)
-    
-    sentences = []
-    current_pos = 0
-    
-    for idx, sent_text in enumerate(sentence_texts):
-        if not sent_text:
-            continue
-        # Find the actual position in the original text
-        start_pos = text.find(sent_text, current_pos)
-        if start_pos == -1:
-            # Fallback: use current position (shouldn't happen with well-formed text)
-            start_pos = current_pos
-        end_pos = start_pos + len(sent_text)
-        
-        sentences.append(SentenceInfo(
-            index=idx,
-            text=sent_text,
-            start_pos=start_pos,
-            end_pos=end_pos
-        ))
-        current_pos = end_pos
-    
-    return sentences
-
-
 
 # Cached embeddings for theological concepts (computed once, reused)
 # =============================================================================
@@ -418,22 +365,7 @@ def transcribe_audio(file_path: str) -> str:
     print("Finished transcribing!")
     return str(result["text"])
 
-# Prayer detection patterns - sentences that start prayers (NOT including "Amen" which ENDS prayers)
-# These patterns should be SPECIFIC to prayer invocations, not just any sentence starting with "God" or "Lord"
-PRAYER_START_PATTERNS = [
-    r"^let'?s\s+pray",                          # "Let's pray"
-    r"^let\s+us\s+pray",                        # "Let us pray"
-    r"^dearly?\s+(heavenly\s+)?father",         # "Dear Father", "Dearly Father"  
-    r"^dear\s+(lord|god)",                      # "Dear Lord", "Dear God"
-    r"^(lord|father|god),?\s+(we|i)\s+(ask|pray|thank|come)\b",  # "Lord, we pray/ask/thank/come"
-    r"^in\s+jesus['']?\s+name",                 # "In Jesus' name"
-    # NOTE: "Amen" is NOT a prayer start - it ENDS prayers. Handled separately below.
-]
-
-# Pattern to detect sentences that END with "Amen" (prayer endings)
-# This matches "Amen.", "In Jesus' name we pray, Amen.", etc.
-AMEN_END_PATTERN = r"\bamen\s*[.!]?\s*$"
-
+# Prayer detection patterns are now imported from ast_builder
 
 
 def segment_into_paragraph_groups(
@@ -869,6 +801,80 @@ def extract_tags(text: str, quote_boundaries: Optional[List[QuoteBoundary]] = No
     return final_tags
 
 
+def extract_tags_from_ast(
+    root,
+    max_tags: int = 10,
+    verbose: bool = True,
+    semantic_threshold: float = 0.40
+) -> List[str]:
+    """
+    Extract tags from an AST, considering only text content (skipping passage nodes).
+
+    Walks the document tree collecting text from TextNodes while skipping
+    PassageNode subtrees entirely. This ensures Bible passage content does
+    not influence tag extraction — only the preacher's own words are analyzed.
+
+    Uses the same semantic theme inference engine as extract_tags(), producing
+    identical output format: a list of tag strings ordered by relevance.
+
+    Args:
+        root: DocumentRootNode to analyze
+        max_tags: Maximum number of tags to return
+        verbose: Whether to print progress messages
+        semantic_threshold: Minimum similarity for semantic themes
+
+    Returns:
+        List of tag strings from semantic theme inference
+    """
+    # Collect text content, skipping passage nodes
+    text_parts: List[str] = []
+
+    def collect_text(node):
+        """Recursively collect text, skipping passage subtrees."""
+        if hasattr(node, 'type') and node.type == 'passage':
+            return  # Skip passage content entirely
+        if hasattr(node, 'type') and node.type == 'text' and hasattr(node, 'content'):
+            text_parts.append(node.content)
+        if hasattr(node, 'children'):
+            for child in node.children:
+                collect_text(child)
+
+    collect_text(root)
+
+    clean_text = ' '.join(text_parts).lower()
+
+    if verbose:
+        print(f"   Collected {len(text_parts)} text segments for tag analysis")
+
+    final_tags: List[str] = []
+
+    try:
+        semantic_themes = get_semantic_themes(
+            clean_text,
+            top_k=max_tags,
+            min_similarity=semantic_threshold,
+            verbose=verbose
+        )
+
+        for theme_name, score in semantic_themes:
+            if theme_name not in final_tags:
+                final_tags.append(theme_name)
+
+        if verbose and semantic_themes:
+            print(f"   ✓ Inferred {len(semantic_themes)} semantic themes from AST text content")
+
+    except Exception as e:
+        if verbose:
+            print(f"   ⚠️  Semantic inference error: {str(e)}")
+
+    if verbose:
+        print(f"\n   ✅ Final tag set: {len(final_tags)} tags")
+        for tag in final_tags:
+            print(f"      • {tag}")
+
+    return final_tags
+
+
 
 if __name__ == "__main__":
     import sys
@@ -887,16 +893,15 @@ if __name__ == "__main__":
     # PIPELINE ORDER (AST-first architecture):
     # 1. Transcribe audio to raw text (or load from test file)
     # 2. Process Bible quotes (auto-detect translation + detect quote boundaries)
-    # 3. Tokenize sentences and segment into paragraph GROUPS (no text modification)
-    # 4. Extract scripture references
-    # 5. Extract keyword tags for categorization
-    # 6. Build structured AST from raw_text + sentences + groups + boundaries
+    # 3. Extract keyword tags for categorization (from raw text, excluding passages)
+    # 4. Build structured AST (includes passage application + paragraph segmentation)
     #
     # IMPORTANT: The raw text is NEVER modified. Paragraph structure is
     # represented as separate ParagraphNode entries in the AST.
+    # Sentence tokenization and paragraph segmentation happen INSIDE build_ast().
     
     print("\n" + "=" * 70)
-    print("SERMON TRANSCRIPTION PIPELINE (AST-based)")
+    print("SERMON TRANSCRIPTION PIPELINE (AST-first)")
     if test_mode:
         print("Mode: TEST (using whisper_test.txt)")
     else:
@@ -923,20 +928,23 @@ if __name__ == "__main__":
     print("\n📖 STEP 2: Processing Bible quotes (detecting translation per-quote)...")
     _processed_text, quote_boundaries = process_text(raw, translation="", auto_detect=True, verbose=True)
     
-    # Step 3: Tokenize and segment into paragraph GROUPS (AST-only, no text modification)
-    print("\n📄 STEP 3: Tokenizing and segmenting into paragraph groups...")
-    sentences = tokenize_sentences(raw)
-    paragraph_groups = segment_into_paragraph_groups(
-        sentences,
-        quote_boundaries=quote_boundaries,
-        min_sentences_per_paragraph=5,
-        similarity_threshold=0.45,
-        window_size=3
-    )
-    print(f"   ✓ {len(paragraph_groups)} paragraph groups from {len(sentences)} sentences")
+    # Step 3: Extract keyword tags from RAW text (excluding passage content)
+    print("\n🏷️  STEP 3: Extracting keyword tags...")
+    tags = extract_tags(raw, quote_boundaries=quote_boundaries, verbose=True)
     
-    # Step 4: Extract scripture references
-    print("\n📖 STEP 4: Building scripture references...")
+    # Step 4: Build structured AST (AST-first pipeline)
+    # This internally: creates flat AST → applies passages → segments paragraphs
+    print("\n🏗️  STEP 4: Building structured AST (AST-first pipeline)...")
+    from ast_builder import build_ast
+    ast_result = build_ast(
+        raw_text=raw,
+        quote_boundaries=quote_boundaries,
+        tags=tags,
+    )
+    print(f"   ✓ AST built: {ast_result.processing_metadata.paragraph_count} paragraphs, "
+          f"{ast_result.processing_metadata.passage_count} passages")
+    
+    # Extract scripture references from AST result
     unique_refs = []
     if quote_boundaries:
         seen_refs = set()
@@ -946,25 +954,6 @@ if __name__ == "__main__":
                 seen_refs.add(ref_str)
                 unique_refs.append(ref_str)
         print(f"   ✓ Found {len(unique_refs)} unique scripture references")
-    else:
-        print("   No scripture references found")
-    
-    # Step 5: Extract keyword tags from RAW text
-    print("\n🏷️  STEP 5: Extracting keyword tags...")
-    tags = extract_tags(raw, quote_boundaries=quote_boundaries, verbose=True)
-    
-    # Step 6: Build structured AST
-    print("\n🏗️  STEP 6: Building structured AST...")
-    from ast_builder import build_ast
-    ast_result = build_ast(
-        raw_text=raw,
-        sentences=sentences,
-        paragraph_groups=paragraph_groups,
-        quote_boundaries=quote_boundaries,
-        tags=tags,
-    )
-    print(f"   ✓ AST built: {ast_result.processing_metadata.paragraph_count} paragraphs, "
-          f"{ast_result.processing_metadata.passage_count} passages")
     
     # Save AST as JSON (the single source of truth)
     ast_json = ast_result.document_state.to_dict()
@@ -979,17 +968,16 @@ if __name__ == "__main__":
     if not test_mode:
         print("  • whisper_raw.txt       - Raw transcription (no processing)")
     print("  • document_state.json   - Structured AST document model")
-    print(f"\nPipeline:")
+    print(f"\nPipeline (AST-first):")
     if test_mode:
         print("  1. ✓ Test file loaded (whisper_test.txt)")
     else:
         print("  1. ✓ Audio transcription (Whisper medium model)")
     print("  2. ✓ Bible quote detection (per-quote translation)")
-    print("  3. ✓ Paragraph segmentation (AST-only, no text modification)")
-    print("  4. ✓ Scripture references extracted")
     if tags:
-        print(f"  5. ✓ Keyword tags extracted ({len(tags)} tags)")
+        print(f"  3. ✓ Keyword tags extracted ({len(tags)} tags)")
     else:
-        print("  5. ⚠️  Tag extraction returned no tags")
-    print(f"  6. ✓ AST built ({ast_result.processing_metadata.paragraph_count} paragraphs)")
+        print("  3. ⚠️  Tag extraction returned no tags")
+    print(f"  4. ✓ AST built ({ast_result.processing_metadata.paragraph_count} paragraphs, "
+          f"{ast_result.processing_metadata.passage_count} passages)")
     print("=" * 70)

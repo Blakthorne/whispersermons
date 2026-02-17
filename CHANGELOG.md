@@ -1,3 +1,19 @@
+## [Unreleased]
+
+### ♻️ Refactor
+
+- **AST-first pipeline**: Rewrote `ast_builder.py` from reconciliation-based to incremental AST-first architecture. New flow: create flat AST → apply passages → segment paragraphs. Eliminates all coordinate-space mismatch bugs by using passage boundaries exactly once at extraction time.
+- **New functions**: `apply_passages_to_ast()` splits flat AST around Bible passages using segment-based approach with reverse-order processing (GUD-001). `segment_ast_paragraphs()` splits text-only paragraphs at semantic topic boundaries. `_find_paragraph_breaks()` encapsulates core segmentation logic.
+- **Removed methods**: `_map_passages_to_groups()`, `_enforce_single_paragraph_passages()`, `_split_group_around_passages()`, `_build_paragraph_nodes()` — no longer needed since AST is built incrementally.
+- **Simplified pipeline**: `build_ast()` no longer requires `sentences` or `paragraph_groups` parameters. Only needs `raw_text` and `quote_boundaries`.
+- **Updated callers**: `whisper_bridge.py`, `main.py` CLI, and `bible_quote_processor.py` updated to use new simplified `build_ast()` signature.
+- Added `extract_tags_from_ast()` in `main.py` for AST-aware tag extraction that skips passage content.
+
+### ✅ Tests
+
+- Added `test_ast_first_pipeline.py` with 20 comprehensive tests covering passage application, paragraph segmentation, integration, and regression scenarios.
+- Updated `test_ast_passage_boundaries.py`, `test_passage_isolation.py`, and `test_e2e_pipeline.py` for new pipeline signature.
+
 ## [1.8.0](https://github.com/PVAS-Development/whisperdesk/compare/v1.7.1...v1.8.0) (2025-12-21)
 
 ### ✨ Features

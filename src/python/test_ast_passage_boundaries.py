@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Test script for AST passage boundary detection in the integrated pipeline.
+Test script for AST passage boundary detection in the AST-first pipeline.
 
 Tests that:
-1. Passages are correctly mapped to paragraphs based on START position
+1. Passages are correctly isolated in their own paragraph nodes
 2. Passages do NOT span multiple paragraphs (single-paragraph constraint)
 3. Passage content is extracted correctly (actual verse text, not trailing text)
 4. Full pipeline integration works end-to-end
 
-Uses the new integrated pipeline: raw_text + sentences + paragraph_groups + boundaries
+Uses the AST-first pipeline: raw_text + quote_boundaries → build_ast()
 """
 
 import sys
@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from bible_quote_processor import QuoteBoundary, BibleReference, process_text
 from ast_builder import build_ast, ASTBuilderConfig
-from main import tokenize_sentences, segment_into_paragraph_groups, SentenceInfo
 
 
 def create_mock_quote_boundary(start, end, book, chapter, verse_start, verse_end=None, verse_text="", confidence=0.95):
@@ -32,18 +31,6 @@ def create_mock_quote_boundary(start, end, book, chapter, verse_start, verse_end
         start_pos=start, end_pos=end, reference=ref,
         verse_text=verse_text, confidence=confidence, translation="KJV"
     )
-
-
-def prepare_ast_inputs(raw_text, quote_boundaries=None, min_sentences=2):
-    """Prepare inputs for build_ast from raw text."""
-    sentences = tokenize_sentences(raw_text)
-    paragraph_groups = segment_into_paragraph_groups(
-        sentences,
-        quote_boundaries=quote_boundaries or [],
-        min_sentences_per_paragraph=min_sentences,
-        similarity_threshold=0.45
-    )
-    return sentences, paragraph_groups
 
 
 def get_passage_content(passage_node):
@@ -90,11 +77,8 @@ def test_passage_mapping_by_start_position():
         verse_text=verse_text, confidence=0.9
     )
 
-    sentences, paragraph_groups = prepare_ast_inputs(raw_text, [quote])
-
     result = build_ast(
-        raw_text=raw_text, sentences=sentences,
-        paragraph_groups=paragraph_groups,
+        raw_text=raw_text,
         quote_boundaries=[quote], title="Test Sermon", debug=True
     )
 
@@ -152,11 +136,8 @@ def test_single_paragraph_constraint():
         confidence=0.9
     )
 
-    sentences, paragraph_groups = prepare_ast_inputs(raw_text, [quote])
-
     result = build_ast(
-        raw_text=raw_text, sentences=sentences,
-        paragraph_groups=paragraph_groups,
+        raw_text=raw_text,
         quote_boundaries=[quote], title="Test Sermon", debug=True
     )
 
@@ -217,11 +198,8 @@ def test_multiple_passages_in_document():
         )
     ]
 
-    sentences, paragraph_groups = prepare_ast_inputs(raw_text, quotes)
-
     result = build_ast(
-        raw_text=raw_text, sentences=sentences,
-        paragraph_groups=paragraph_groups,
+        raw_text=raw_text,
         quote_boundaries=quotes, title="Test Sermon", debug=True
     )
 
@@ -269,13 +247,9 @@ def test_real_transcript_processing():
         for qb in quote_boundaries:
             print(f"  - {qb.reference.to_standard_format()}: [{qb.start_pos}, {qb.end_pos}]")
 
-        # Prepare integrated pipeline inputs
-        sentences, paragraph_groups = prepare_ast_inputs(raw_text, quote_boundaries)
-
-        # Build AST using the new integrated approach
+        # Build AST using the AST-first pipeline
         result = build_ast(
-            raw_text=raw_text, sentences=sentences,
-            paragraph_groups=paragraph_groups,
+            raw_text=raw_text,
             quote_boundaries=quote_boundaries,
             title="Integration Test Sermon", debug=True
         )
@@ -289,6 +263,163 @@ def test_real_transcript_processing():
         print(f"  FAIL: {e}")
         import traceback
         traceback.print_exc()
+        return False
+
+
+def test_coordinate_consistency_with_normalizable_references():
+    """
+    End-to-end test: references that would change length during normalization
+    must still produce correct AST passage content.
+    
+    This is the critical regression test for the coordinate-space mismatch bug.
+    Previously, process_text() would mutate text (e.g., 'Romans 12 one' -> 'Romans 12:1')
+    before detecting boundaries, so boundary positions were in the mutated text's
+    coordinate space. But the AST builder sliced from original text, causing off-by-N
+    errors at every passage boundary.
+    
+    After the fix, process_text() never mutates text, so all positions are in
+    the same coordinate space as raw_text.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 5: Coordinate consistency with normalizable references")
+    print("=" * 70)
+    
+    # This transcript intentionally uses spoken number words that normalize differently:
+    # "Romans 12 one" (13 chars) would have become "Romans 12:1" (11 chars) - 2 char shift
+    # "Hebrews 725" (11 chars) would have become "Hebrews 7:25" (12 chars) - 1 char shift opposite direction
+    raw_text = (
+        "Good morning church. Today I want to talk about sacrifice and salvation. "
+        "Let us turn to Romans 12 one which says I beseech you therefore "
+        "brethren by the mercies of God that you present your bodies a living "
+        "sacrifice holy acceptable unto God which is your reasonable service. "
+        "That is a powerful message about living for God. "
+        "And we can trust that our Savior will keep us because Hebrews 7:25 says "
+        "wherefore he is able also to save them to the uttermost that come unto God "
+        "by him seeing he ever liveth to make intercession for them. "
+        "What a wonderful promise from God."
+    )
+    
+    print(f"  Raw text length: {len(raw_text)} chars")
+    
+    try:
+        # Run process_text — after the fix, this should NOT mutate text
+        processed_text, quote_boundaries = process_text(
+            raw_text, translation="KJV", auto_detect=True, verbose=False
+        )
+        
+        # Verify text was not mutated
+        if processed_text != raw_text:
+            print(f"  FAIL: process_text() mutated the text!")
+            print(f"    Original length: {len(raw_text)}, Processed length: {len(processed_text)}")
+            return False
+        print(f"  Text immutability: PASS (text unchanged)")
+        
+        if not quote_boundaries:
+            print(f"  WARN: No quotes detected (API may be unavailable) — skipping boundary checks")
+            return True  # Not a failure, just can't test without API
+        
+        print(f"  Detected {len(quote_boundaries)} quote(s)")
+        
+        # Verify all boundary positions are valid for slicing raw_text
+        for qb in quote_boundaries:
+            ref_str = qb.reference.to_standard_format()
+            
+            if qb.start_pos < 0 or qb.start_pos >= len(raw_text):
+                print(f"  FAIL: {ref_str} start_pos={qb.start_pos} out of bounds")
+                return False
+            
+            if qb.end_pos <= 0 or qb.end_pos > len(raw_text):
+                print(f"  FAIL: {ref_str} end_pos={qb.end_pos} out of bounds")
+                return False
+            
+            # Extract content using boundary positions on raw_text
+            extracted = raw_text[qb.start_pos:qb.end_pos]
+            
+            if not extracted.strip():
+                print(f"  FAIL: {ref_str} extracts empty content from raw_text[{qb.start_pos}:{qb.end_pos}]")
+                return False
+            
+            print(f"  {ref_str}: [{qb.start_pos}, {qb.end_pos}] → '{extracted[:60]}...'")
+            
+            # Verify the extracted content has reasonable word overlap with verse_text
+            if qb.verse_text:
+                import re
+                verse_words = set(re.findall(r'\w+', qb.verse_text.lower()))
+                content_words = set(re.findall(r'\w+', extracted.lower()))
+                overlap = verse_words & content_words
+                overlap_ratio = len(overlap) / len(verse_words) if verse_words else 0
+                
+                if overlap_ratio < 0.3:
+                    print(f"  FAIL: {ref_str} content has only {overlap_ratio:.0%} word overlap with verse text")
+                    print(f"    Extracted: '{extracted[:80]}'")
+                    print(f"    Verse:     '{qb.verse_text[:80]}'")
+                    return False
+                else:
+                    print(f"    Word overlap: {overlap_ratio:.0%} (OK)")
+        
+        # Now build AST and verify passage nodes contain correct content
+        result = build_ast(
+            raw_text=raw_text,
+            quote_boundaries=quote_boundaries,
+            title="Coordinate Test Sermon", debug=True
+        )
+        
+        # Check passage nodes in AST
+        root = result.document_state.root
+        passage_count = 0
+        for child in root.children:
+            if child.type == 'paragraph':
+                for sub in child.children:
+                    if sub.type == 'passage':
+                        passage_count += 1
+                        passage_content = get_passage_content(sub)
+                        if not passage_content.strip():
+                            print(f"  FAIL: Empty passage node in AST")
+                            return False
+        
+        print(f"  AST built with {passage_count} passage node(s)")
+        print(f"  PASS: All coordinates aligned correctly")
+        return True
+        
+    except Exception as e:
+        print(f"  FAIL: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_immutability_assertion():
+    """Test that process_text() returns identical text (no mutation)."""
+    print("\n" + "=" * 70)
+    print("TEST 6: Text immutability assertion")
+    print("=" * 70)
+    
+    # Text with references that WOULD have been normalized in the old code
+    raw_text = (
+        "The Bible tells us in John 3:16 that God loves us. "
+        "And in Romans 8 28 we learn about God's plan."
+    )
+    
+    try:
+        processed_text, _quotes = process_text(raw_text, translation="KJV", verbose=False)
+        
+        if processed_text is raw_text:
+            print(f"  PASS: Returned text is the same object (identity check)")
+            return True
+        elif processed_text == raw_text:
+            print(f"  PASS: Returned text is equal (value check)")
+            return True
+        else:
+            print(f"  FAIL: Text was mutated!")
+            print(f"    Input:  '{raw_text[:80]}'")
+            print(f"    Output: '{processed_text[:80]}'")
+            return False
+    except AssertionError as e:
+        # The immutability assertion itself fired — this IS the failure mode we prevent
+        print(f"  FAIL: Immutability assertion fired: {e}")
+        return False
+    except Exception as e:
+        print(f"  FAIL: {e}")
         return False
 
 
@@ -307,6 +438,16 @@ def main():
         results.append(("Full pipeline integration", test_real_transcript_processing()))
     except Exception as e:
         print(f"Skipping integration test: {e}")
+
+    try:
+        results.append(("Coordinate consistency (normalizable refs)", test_coordinate_consistency_with_normalizable_references()))
+    except Exception as e:
+        print(f"Skipping coordinate consistency test: {e}")
+    
+    try:
+        results.append(("Text immutability assertion", test_immutability_assertion()))
+    except Exception as e:
+        print(f"Skipping immutability test: {e}")
 
     print("\n" + "=" * 70)
     print("TEST SUMMARY")

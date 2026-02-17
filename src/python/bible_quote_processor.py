@@ -17,9 +17,12 @@ import json
 import time
 import difflib
 from pathlib import Path
-from typing import List, Tuple, Dict, Optional, NamedTuple
+from typing import List, Tuple, Dict, Optional, NamedTuple, Callable, TYPE_CHECKING
 from dataclasses import dataclass
 import requests
+
+if TYPE_CHECKING:
+    from ast_builder import ASTBuilderResult
 
 # ============================================================================
 # CONFIGURATION
@@ -74,6 +77,56 @@ BOOK_ID_MAP = {
     '2 Peter': 61, '1 John': 62, '2 John': 63, '3 John': 64, 'Jude': 65,
     'Revelation': 66
 }
+
+# Chapter counts for each Bible book (Protestant canon, 66 books)
+# Used for offline validation of chapter numbers without an API call.
+# Prevents false positives in normalization (e.g., rejecting "Matthew 63:3"
+# since Matthew only has 28 chapters).
+BOOK_CHAPTER_COUNTS = {
+    'Genesis': 50, 'Exodus': 40, 'Leviticus': 27, 'Numbers': 36, 'Deuteronomy': 34,
+    'Joshua': 24, 'Judges': 21, 'Ruth': 4, '1 Samuel': 31, '2 Samuel': 24,
+    '1 Kings': 22, '2 Kings': 25, '1 Chronicles': 29, '2 Chronicles': 36,
+    'Ezra': 10, 'Nehemiah': 13, 'Esther': 10, 'Job': 42, 'Psalms': 150,
+    'Proverbs': 31, 'Ecclesiastes': 12, 'Song of Solomon': 8, 'Isaiah': 66,
+    'Jeremiah': 52, 'Lamentations': 5, 'Ezekiel': 48, 'Daniel': 12,
+    'Hosea': 14, 'Joel': 3, 'Amos': 9, 'Obadiah': 1, 'Jonah': 4,
+    'Micah': 7, 'Nahum': 3, 'Habakkuk': 3, 'Zephaniah': 3, 'Haggai': 2,
+    'Zechariah': 14, 'Malachi': 4, 'Matthew': 28, 'Mark': 16, 'Luke': 24,
+    'John': 21, 'Acts': 28, 'Romans': 16, '1 Corinthians': 16, '2 Corinthians': 13,
+    'Galatians': 6, 'Ephesians': 6, 'Philippians': 4, 'Colossians': 4,
+    '1 Thessalonians': 5, '2 Thessalonians': 3, '1 Timothy': 6, '2 Timothy': 4,
+    'Titus': 3, 'Philemon': 1, 'Hebrews': 13, 'James': 5, '1 Peter': 5,
+    '2 Peter': 3, '1 John': 5, '2 John': 1, '3 John': 1, 'Jude': 1,
+    'Revelation': 22
+}
+
+# Books with only 1 chapter — references like "Jude 12" always mean verse 12
+# of the sole chapter, not chapter 12.
+SINGLE_CHAPTER_BOOKS = frozenset(
+    book for book, count in BOOK_CHAPTER_COUNTS.items() if count == 1
+)
+
+
+def is_valid_chapter(book: str, chapter: int) -> bool:
+    """
+    Check whether a chapter number is within the valid range for a book.
+
+    Args:
+        book: Canonical book name (e.g., "Matthew", "1 Corinthians")
+        chapter: Chapter number to validate
+
+    Returns:
+        True if the chapter is valid (1 ≤ chapter ≤ max for the book).
+        Returns True if the book is not in the lookup (fallback to permissive).
+        Returns False for chapters ≤ 0.
+    """
+    if chapter <= 0:
+        return False
+    max_ch = BOOK_CHAPTER_COUNTS.get(book)
+    if max_ch is None:
+        return True  # Unknown book — permissive fallback
+    return chapter <= max_ch
+
 
 # ============================================================================
 # BIBLE BOOK DATA
@@ -1163,6 +1216,13 @@ def normalize_references_in_text(text: str, references: List[BibleReference]) ->
     """
     Replace malformed Bible references in text with properly formatted versions.
     
+    NOTE: This function is an OPTIONAL COSMETIC post-processing utility.
+    It is NOT called during the boundary detection pipeline (process_text).
+    All boundary detection operates on unmodified original text to maintain
+    coordinate-space consistency. Use this only for display formatting if
+    the renderer needs pre-normalized text (the AST renderer already handles
+    reference formatting via PassageNode.quoteDetection.normalizedReference).
+    
     IMPORTANT: Verbose references using "chapter" are NOT normalized because we want
     to preserve natural speech patterns. Only malformed punctuation (like "Book X-Y"
     instead of "Book X:Y") is corrected.
@@ -1194,6 +1254,374 @@ def normalize_references_in_text(text: str, references: List[BibleReference]) ->
             result = before + normalized + after
     
     return result
+
+
+# ============================================================================
+# AST-LEVEL BIBLE REFERENCE NORMALIZATION
+# ============================================================================
+#
+# This section implements reference normalization that operates on TextNode.content
+# strings within the AST, NOT on the raw transcript text. Normalization runs as
+# Stage 2b in the AST pipeline, after apply_passages_to_ast() but before
+# segment_ast_paragraphs(). The original text (raw_text) is NEVER modified —
+# only TextNode display content is updated.
+#
+# Normalization rules handle common ASR transcription artifacts:
+#   - Run-together numbers:  "Romans 829"     → "Romans 8:29"
+#   - Hyphen separator:      "Galatians 1-6"  → "Galatians 1:6"
+#   - Comma separator:       "Revelation 19, 16" → "Revelation 19:16"
+#   - Enumeration with "and":"Romans 1, 21 and 22" → "Romans 1:21-22"
+#   - Period separator:      "Romans 12.1"    → "Romans 12:1"
+#   - Spoken verse numbers:  "Romans 12 one"  → "Romans 12:1"
+#
+# Verbose speech patterns (containing "chapter", "verses", "through") are
+# preserved as-is, along with already-correct references.
+# ============================================================================
+
+
+@dataclass
+class ReferenceNormalization:
+    """Record of a single reference normalization applied to text.
+
+    Stores enough information to recover the original text and understand
+    which rule triggered the change.
+
+    Attributes:
+        original_text: The matched text before normalization (e.g., "Romans 829")
+        normalized_text: The replacement text (e.g., "Romans 8:29")
+        position: Character offset within the text segment
+        book: Canonical book name (e.g., "Romans")
+        chapter: Detected chapter number
+        verse_start: Detected starting verse (or None)
+        verse_end: Detected ending verse (or None)
+        rule_applied: Label identifying which normalization pattern fired
+    """
+    original_text: str
+    normalized_text: str
+    position: int
+    book: str
+    chapter: int
+    verse_start: Optional[int] = None
+    verse_end: Optional[int] = None
+    rule_applied: str = ""
+
+
+def _is_verbose_reference(text_around: str) -> bool:
+    """Check if text near a reference uses verbose speech patterns.
+
+    Verbose references like "Matthew chapter 2 verses 1 through 12" should
+    be preserved, not normalized. This helper looks for indicator words.
+    """
+    lower = text_around.lower()
+    return any(word in lower for word in ('chapter', 'verses', 'verse', 'through'))
+
+
+def normalize_bible_references_in_segment(
+    text: str,
+    api_client: Optional[BibleAPIClient] = None,
+) -> Tuple[str, List[ReferenceNormalization]]:
+    """
+    Normalize malformed Bible references in a text segment.
+
+    Applies normalization rules in priority order (longest-match-first) to fix
+    common ASR transcription artifacts. Each rule match consumes the matched
+    span to prevent double-normalization.
+
+    This is a PURE function (text in → text out) with no AST awareness.
+    It operates on individual text segments such as TextNode.content strings.
+
+    Args:
+        text: Input text segment to normalize
+        api_client: Optional BibleAPIClient for online verification of
+                    ambiguous cases. If None, uses only local BOOK_CHAPTER_COUNTS.
+
+    Returns:
+        Tuple of (normalized_text, list_of_normalizations) where each
+        normalization records the original text, replacement, and rule used.
+
+    Invariants:
+        - Idempotent: applying normalization twice yields the same result.
+        - Verbose speech patterns ("chapter", "verses", "through") are never altered.
+        - Already-correct references (with colons) are never altered.
+        - Single-chapter book references (e.g., "Jude 12") are left as-is.
+    """
+    normalizations: List[ReferenceNormalization] = []
+    # Track consumed character spans to prevent overlapping matches
+    consumed: List[Tuple[int, int]] = []
+
+    book_pattern = rf'(?:(?:first|second|third|1|2|3)\s+)?(?:{BOOK_NAMES_PATTERN})'
+
+    def _is_consumed(start: int, end: int) -> bool:
+        """Check if a span overlaps any already-consumed span."""
+        return any(not (end <= cs or start >= ce) for cs, ce in consumed)
+
+    def _record(match_start: int, match_end: int, original: str, normalized: str,
+                book: str, chapter: int, verse_start: Optional[int],
+                verse_end: Optional[int], rule: str):
+        """Record a normalization and mark the span as consumed."""
+        consumed.append((match_start, match_end))
+        normalizations.append(ReferenceNormalization(
+            original_text=original,
+            normalized_text=normalized,
+            position=match_start,
+            book=book,
+            chapter=chapter,
+            verse_start=verse_start,
+            verse_end=verse_end,
+            rule_applied=rule,
+        ))
+
+    # ------------------------------------------------------------------
+    # Rule 1: Enumeration with "and"
+    # "Romans 1, 21 and 22" → "Romans 1:21-22"
+    # Must come before comma rule to match longer patterns first.
+    # ------------------------------------------------------------------
+    enum_and_pat = re.compile(
+        rf'(?P<book>{book_pattern})\s+(?P<ch>\d+),\s*(?P<v1>\d+),?\s*and\s+(?P<v2>\d+)'
+        rf'(?!\s*(?:peter|samuel|kings|chronicles|corinthians|thessalonians|timothy|john))',
+        re.IGNORECASE
+    )
+    for m in enum_and_pat.finditer(text):
+        if _is_consumed(m.start(), m.end()):
+            continue
+        book_raw = m.group('book')
+        book = normalize_book_name(book_raw)
+        if not book:
+            continue
+        if book in SINGLE_CHAPTER_BOOKS:
+            continue
+        ch = int(m.group('ch'))
+        v1 = int(m.group('v1'))
+        v2 = int(m.group('v2'))
+        if not is_valid_chapter(book, ch):
+            continue
+        # Validate verses are plausible (≤ 200)
+        if v1 > 200 or v2 > 200:
+            continue
+        if v2 == v1 + 1:
+            normalized = f"{book} {ch}:{v1}-{v2}"
+        elif v2 > v1:
+            normalized = f"{book} {ch}:{v1}-{v2}"
+        else:
+            normalized = f"{book} {ch}:{v1}, {v2}"
+        _record(m.start(), m.end(), m.group(), normalized, book, ch, v1, v2, 'enumeration_and')
+
+    # ------------------------------------------------------------------
+    # Rule 2: Comma as chapter:verse separator
+    # "Revelation 19, 16" → "Revelation 19:16"
+    # Negative lookahead: not followed by another comma+digit (enumeration).
+    # ------------------------------------------------------------------
+    comma_pat = re.compile(
+        rf'(?P<book>{book_pattern})\s+(?P<ch>\d+),\s*(?P<v>\d+)(?!\s*,\s*\d)',
+        re.IGNORECASE
+    )
+    for m in comma_pat.finditer(text):
+        if _is_consumed(m.start(), m.end()):
+            continue
+        book_raw = m.group('book')
+        book = normalize_book_name(book_raw)
+        if not book:
+            continue
+        if book in SINGLE_CHAPTER_BOOKS:
+            continue
+        ch = int(m.group('ch'))
+        v = int(m.group('v'))
+        if not is_valid_chapter(book, ch):
+            continue
+        if v > 200 or v <= 0:
+            continue
+        # Check it's not verbose
+        ctx_start = max(0, m.start() - 20)
+        ctx_end = min(len(text), m.end() + 20)
+        if _is_verbose_reference(text[ctx_start:ctx_end]):
+            continue
+        normalized = f"{book} {ch}:{v}"
+        _record(m.start(), m.end(), m.group(), normalized, book, ch, v, None, 'comma_separator')
+
+    # ------------------------------------------------------------------
+    # Rule 3: Period as chapter:verse separator
+    # "Romans 12.1" → "Romans 12:1"
+    # Must NOT match sentence-ending periods.
+    # ------------------------------------------------------------------
+    period_pat = re.compile(
+        rf'(?P<book>{book_pattern})\s+(?P<ch>\d+)\.(?P<v>\d+)',
+        re.IGNORECASE
+    )
+    for m in period_pat.finditer(text):
+        if _is_consumed(m.start(), m.end()):
+            continue
+        book_raw = m.group('book')
+        book = normalize_book_name(book_raw)
+        if not book:
+            continue
+        if book in SINGLE_CHAPTER_BOOKS:
+            continue
+        ch = int(m.group('ch'))
+        v = int(m.group('v'))
+        if not is_valid_chapter(book, ch):
+            continue
+        if v > 200 or v <= 0:
+            continue
+        normalized = f"{book} {ch}:{v}"
+        _record(m.start(), m.end(), m.group(), normalized, book, ch, v, None, 'period_separator')
+
+    # ------------------------------------------------------------------
+    # Rule 4: Hyphen as chapter:verse separator
+    # "Galatians 1-6" → "Galatians 1:6"
+    # Must NOT normalize actual chapter ranges like "Genesis 1-3".
+    # ------------------------------------------------------------------
+    hyphen_pat = re.compile(
+        rf'(?P<book>{book_pattern})\s+(?P<ch>\d+)-(?P<v>\d+)(?![\d-])',
+        re.IGNORECASE
+    )
+    for m in hyphen_pat.finditer(text):
+        if _is_consumed(m.start(), m.end()):
+            continue
+        book_raw = m.group('book')
+        book = normalize_book_name(book_raw)
+        if not book:
+            continue
+        if book in SINGLE_CHAPTER_BOOKS:
+            continue
+        ch = int(m.group('ch'))
+        v = int(m.group('v'))
+        if not is_valid_chapter(book, ch):
+            continue
+        if v <= 0 or v > 200:
+            continue
+        # Disambiguation: chapter range vs chapter:verse
+        max_ch = BOOK_CHAPTER_COUNTS.get(book)
+        if max_ch is not None:
+            # If both numbers are small valid chapters and the gap is very small,
+            # it could be a chapter range (e.g., "Genesis 1-3" = chapters 1-3).
+            # Only skip when both numbers are small (≤ 3) and gap ≤ 2, which is
+            # the most common chapter-range pattern in spoken sermons.
+            if v <= max_ch and v >= ch and v <= 3 and (v - ch) <= 2:
+                continue  # Conservative: treat as chapter range, do NOT normalize
+        # If v exceeds max chapter count, it's definitely a verse number
+        # Also normalize when v is plausible as a verse and ch is a valid chapter
+        if api_client is not None:
+            if not api_client.verify_reference(book, ch, v):
+                continue
+        normalized = f"{book} {ch}:{v}"
+        _record(m.start(), m.end(), m.group(), normalized, book, ch, v, None, 'hyphen_separator')
+
+    # ------------------------------------------------------------------
+    # Rule 5: Spoken verse numbers
+    # "Romans 12 one" → "Romans 12:1"
+    # ------------------------------------------------------------------
+    spoken_pat = re.compile(
+        rf'(?P<book>{book_pattern})\s+(?P<ch>\d+)\s+(?P<word>(?:{SPOKEN_NUMBERS_PATTERN}))(?=\s|$|[,\.])',
+        re.IGNORECASE
+    )
+    for m in spoken_pat.finditer(text):
+        if _is_consumed(m.start(), m.end()):
+            continue
+        book_raw = m.group('book')
+        book = normalize_book_name(book_raw)
+        if not book:
+            continue
+        if book in SINGLE_CHAPTER_BOOKS:
+            continue
+        ch = int(m.group('ch'))
+        word = m.group('word').lower()
+        v = WORD_TO_NUMBER.get(word)
+        if v is None:
+            continue
+        if not is_valid_chapter(book, ch):
+            continue
+        # Check it's not verbose
+        ctx_start = max(0, m.start() - 20)
+        ctx_end = min(len(text), m.end() + 20)
+        if _is_verbose_reference(text[ctx_start:ctx_end]):
+            continue
+        normalized = f"{book} {ch}:{v}"
+        _record(m.start(), m.end(), m.group(), normalized, book, ch, v, None, 'spoken_number')
+
+    # ------------------------------------------------------------------
+    # Rule 6: Run-together numbers (3+ digits, no separator)
+    # "Romans 829" → "Romans 8:29"
+    # Must not match chapter-only references (1-2 digits).
+    # Must not match references already handled by a colon or other separator.
+    # ------------------------------------------------------------------
+    runtogether_pat = re.compile(
+        rf'(?P<book>{book_pattern})\s+(?P<num>\d{{3,}})(?!\s*[:\-.]|\s+(?:chapter|verse|and\s+\d|through\s+\d|to\s+\d))',
+        re.IGNORECASE
+    )
+    for m in runtogether_pat.finditer(text):
+        if _is_consumed(m.start(), m.end()):
+            continue
+        book_raw = m.group('book')
+        book = normalize_book_name(book_raw)
+        if not book:
+            continue
+        if book in SINGLE_CHAPTER_BOOKS:
+            continue
+        num_str = m.group('num')
+
+        # Try to split the run-together number into chapter:verse
+        # Use local validation first, fall back to API if available
+        best_split = None
+        for i in range(1, len(num_str)):
+            ch_str = num_str[:i]
+            v_str = num_str[i:]
+            if v_str.startswith('0') and len(v_str) > 1:
+                continue
+            try:
+                ch = int(ch_str)
+                v = int(v_str)
+            except ValueError:
+                continue
+            if ch <= 0 or v <= 0 or v > 200:
+                continue
+            if not is_valid_chapter(book, ch):
+                continue
+            # Valid local candidate
+            if best_split is None:
+                best_split = (ch, v)
+            else:
+                # Prefer the split whose chapter is valid and verse is smaller
+                # (more likely correct: e.g., 6:33 preferred over 63:3 for "633")
+                if is_valid_chapter(book, ch):
+                    if not is_valid_chapter(book, best_split[0]):
+                        best_split = (ch, v)
+                    elif ch > best_split[0]:
+                        # Prefer larger chapter if both valid (e.g., 8:29 over 82:9)
+                        # Actually prefer the split where chapter is valid and verse
+                        # is reasonable — the longer chapter prefix is usually correct.
+                        best_split = (ch, v)
+
+        if best_split is None:
+            continue
+
+        ch, v = best_split
+
+        # Optional API verification
+        if api_client is not None:
+            if not api_client.verify_reference(book, ch, v):
+                continue
+
+        normalized = f"{book} {ch}:{v}"
+        _record(m.start(), m.end(), m.group(), normalized, book, ch, v, None, 'runtogether')
+
+    # ------------------------------------------------------------------
+    # Apply normalizations: sort by position descending to avoid offset shifts
+    # ------------------------------------------------------------------
+    if not normalizations:
+        return text, []
+
+    normalizations.sort(key=lambda n: n.position, reverse=True)
+    result = text
+    for norm in normalizations:
+        before = result[:norm.position]
+        after = result[norm.position + len(norm.original_text):]
+        result = before + norm.normalized_text + after
+
+    # Re-sort normalizations by position ascending for the caller
+    normalizations.sort(key=lambda n: n.position)
+
+    return result, normalizations
+
 
 # ============================================================================
 # QUOTE DETECTION WITH FUZZY MATCHING
@@ -1578,8 +2006,18 @@ def find_verse_end_in_transcript(transcript: str, start_pos: int, verse_text: st
     if coverage < 0.5:
         return None  # Insufficient coverage, boundary unreliable
     
-    # Return the position after the last matched word
-    return start_pos + last_matched_pos
+    # Capture trailing punctuation after the last matched word
+    end_absolute = start_pos + last_matched_pos
+    trailing_text = transcript[end_absolute:end_absolute + 5]  # Look at next few chars
+    
+    # Extend past punctuation characters that are part of the verse ending
+    punct_match = re.match(r'^[.,:;!?\'")\]]+', trailing_text)
+    if punct_match:
+        end_absolute += punct_match.end()
+        if debug:
+            print(f"      [END_FIND] Extended past trailing punctuation: '{punct_match.group()}'")
+    
+    return end_absolute
 
 
 def _words_match_fuzzy(word1: str, word2: str, threshold: float = 0.8) -> bool:
@@ -2778,12 +3216,160 @@ def extend_quote_start_backward(text: str, quote_start: int, ref_position: int) 
 # INTERJECTION AND COMMENTARY DETECTION
 # ============================================================================
 
+
+def compute_sequential_alignment(
+    chunk_words: List[str],
+    verse_words: List[str],
+    max_verse_skip: int = 3,
+) -> Tuple[float, List[int], List[Tuple[int, int]]]:
+    """
+    Compute how well chunk_words align sequentially against verse_words.
+
+    Uses Longest Common Subsequence (LCS) to find the longest ordered subsequence
+    of chunk_words that appears (in the same order) in verse_words. This correctly
+    handles small word-order transpositions in transcription (e.g., "I yet" vs
+    "yet I") without losing alignment, while still giving low scores for true
+    paraphrases where words appear in a fundamentally different order.
+
+    Args:
+        chunk_words: Normalized words from the transcript chunk
+        verse_words: Normalized words from the Bible verse text
+        max_verse_skip: (unused, kept for API compat) — LCS handles skips inherently
+
+    Returns:
+        Tuple of:
+        - alignment_ratio: fraction of chunk words that aligned sequentially (0.0-1.0)
+        - aligned_indices: list of chunk word indices that were part of the LCS
+        - gap_regions: list of (start_idx, end_idx) in chunk_words that were NOT aligned
+    """
+    if not chunk_words or not verse_words:
+        return (0.0, [], [])
+
+    n = len(chunk_words)
+    m = len(verse_words)
+
+    # Build LCS table using fuzzy word matching
+    # dp[i][j] = length of LCS of chunk_words[:i] and verse_words[:j]
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            if _words_match_fuzzy(chunk_words[i - 1], verse_words[j - 1]):
+                dp[i][j] = dp[i - 1][j - 1] + 1
+            else:
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+
+    lcs_length = dp[n][m]
+    alignment_ratio = lcs_length / n if n > 0 else 0.0
+
+    # Backtrack to find which chunk indices were aligned
+    aligned: List[int] = []
+    i, j = n, m
+    while i > 0 and j > 0:
+        if _words_match_fuzzy(chunk_words[i - 1], verse_words[j - 1]):
+            aligned.append(i - 1)
+            i -= 1
+            j -= 1
+        elif dp[i - 1][j] >= dp[i][j - 1]:
+            i -= 1
+        else:
+            j -= 1
+    aligned.reverse()
+
+    # Extract gap regions — contiguous spans of chunk indices NOT in aligned
+    gap_regions: List[Tuple[int, int]] = []
+    aligned_set = set(aligned)
+    gap_start: Optional[int] = None
+
+    for i in range(n):
+        if i not in aligned_set:
+            if gap_start is None:
+                gap_start = i
+        else:
+            if gap_start is not None:
+                gap_regions.append((gap_start, i))
+                gap_start = None
+
+    if gap_start is not None:
+        gap_regions.append((gap_start, n))
+
+    return (alignment_ratio, aligned, gap_regions)
+
+
+def find_verse_resumption_point(
+    remaining_raw_text: str,
+    verse_words: List[str],
+    offset: int,
+    min_run_length: int = 3
+) -> Optional[int]:
+    """
+    Find where verse text resumes in the remaining raw text after a commentary block.
+
+    Uses word-level matching (immune to punctuation differences) to find a run of
+    min_run_length consecutive verse words in the remaining text.
+
+    Args:
+        remaining_raw_text: Raw transcript text after the commentary start
+        verse_words: Full ordered verse word list (normalized)
+        offset: Absolute position offset to add to returned position
+        min_run_length: Minimum consecutive verse word matches to confirm resumption
+
+    Returns:
+        Absolute position in raw text where verse resumes, or None
+    """
+    if not remaining_raw_text or not verse_words:
+        return None
+
+    # Tokenize remaining text into words with positions
+    word_pattern = re.compile(r'\b\w+\b')
+    word_matches = list(word_pattern.finditer(remaining_raw_text))
+
+    if not word_matches:
+        return None
+
+    remaining_words = [normalize_for_comparison(m.group()) for m in word_matches]
+
+    # For each starting position in remaining_words, try to find a consecutive run
+    # of min_run_length words that match verse_words in order
+    for i in range(len(remaining_words)):
+        # Find where this word appears in verse_words
+        for v_start in range(len(verse_words)):
+            if _words_match_fuzzy(remaining_words[i], verse_words[v_start]):
+                # Check if the next min_run_length - 1 words also match consecutively
+                run_length = 1
+                v_idx = v_start + 1
+                r_idx = i + 1
+
+                while (run_length < min_run_length and
+                       r_idx < len(remaining_words) and
+                       v_idx < len(verse_words)):
+                    if _words_match_fuzzy(remaining_words[r_idx], verse_words[v_idx]):
+                        run_length += 1
+                        v_idx += 1
+                        r_idx += 1
+                    elif v_idx + 1 < len(verse_words) and _words_match_fuzzy(remaining_words[r_idx], verse_words[v_idx + 1]):
+                        # Allow skipping one verse word (speaker may skip a word)
+                        run_length += 1
+                        v_idx += 2
+                        r_idx += 1
+                    else:
+                        break
+
+                if run_length >= min_run_length:
+                    # Found a consecutive run — return the raw text position
+                    return offset + word_matches[i].start()
+
+    return None
+
 def detect_commentary_blocks(text: str, start_pos: int, end_pos: int, verse_text: str) -> List[Tuple[int, int]]:
     """
     Detect commentary blocks within a quote boundary.
     
     Commentary blocks are longer sections where the speaker explains or comments
     on the verse rather than reading it. These should be excluded from quoting.
+    
+    Uses sequential word alignment (order-aware) as the primary detection signal,
+    with word-set overlap as a secondary confirmation for borderline cases.
+    This correctly identifies paraphrases that reuse verse vocabulary in different order.
     
     Args:
         text: Full transcript text
@@ -2801,7 +3387,8 @@ def detect_commentary_blocks(text: str, start_pos: int, end_pos: int, verse_text
     # Commentary typically starts after a sentence end and doesn't match verse text
     sentence_pattern = re.compile(r'([.!?])\s+([A-Z])')
     
-    verse_words_set = set(get_words(verse_text))
+    verse_words_list = get_words(verse_text)   # Ordered list for sequential matching
+    verse_words_set = set(verse_words_list)     # Set for fast lookups
     
     # Find potential sentence boundaries
     boundaries = []
@@ -2811,9 +3398,32 @@ def detect_commentary_blocks(text: str, start_pos: int, end_pos: int, verse_text
     if not boundaries:
         return []
     
+    # Commentary detection patterns (allow multi-word subjects before "is")
+    COMMENTARY_PATTERNS = [
+        r'^\s*[A-Za-z]+(?:\s+[A-Za-z]+)*\s+is\s+denoting\b',  # "X is denoting"
+        r'^\s*[A-Za-z]+(?:\s+[A-Za-z]+)*\s+is\s+just\s+another\b',  # "X is just another"
+        r'^\s*[A-Za-z]+(?:\s+[A-Za-z]+)*\s+means\b',          # "X means"
+        r'^\s*[Tt]hat\s+is\b',                                 # "That is"
+        r'^\s*[Tt]his\s+means\b',                              # "This means"
+        r'^\s*[Ii]n\s+other\s+words\b',                        # "In other words"
+        r'^\s*[Ww]hich\s+means\b',                             # "Which means"
+        # Speaker attribution and commentary lead-ins
+        r'^\s*(?:[Ss]o\s+)?(?:Paul|he|she|the\s+apostle|the\s+author)\s+(?:says|writes|said|wrote)\b',
+        r'^\s*(?:Is|Are|Was|Were|Do|Does|Did|Can|Could|Should)\s+(?:there|we|you|they|it)\b.*\?',
+        r"^\s*(?:So|Now|See|Look|Notice)\s*,?\s+(?:he|she|Paul|we|I|you)\b",
+        r"^\s*I(?:'m| am)\s+(?:not\s+)?(?:here|just|simply)\b",
+    ]
+    
+    # Track position to skip over already-detected commentary blocks
+    skip_until = 0
+    
     # For each boundary, check if the following text is verse content or commentary
     for boundary_pos in boundaries:
-        # Get the next ~100 chars after this boundary
+        abs_pos = start_pos + boundary_pos
+        if abs_pos < skip_until:
+            continue  # Inside a previously detected commentary block
+        
+        # Get the next ~150 chars after this boundary
         chunk_end = min(boundary_pos + 150, len(quote_text))
         chunk = quote_text[boundary_pos:chunk_end]
         
@@ -2822,19 +3432,8 @@ def detect_commentary_blocks(text: str, start_pos: int, end_pos: int, verse_text
         if len(chunk_stripped) < 20:
             continue
         
-        # Check for commentary patterns
+        # Check for commentary patterns (explicit regex patterns first)
         is_commentary = False
-        
-        # Commentary detection patterns (allow multi-word subjects before "is")
-        COMMENTARY_PATTERNS = [
-            r'^\s*[A-Za-z]+(?:\s+[A-Za-z]+)*\s+is\s+denoting\b',  # "X is denoting" / "A scepter is denoting"
-            r'^\s*[A-Za-z]+(?:\s+[A-Za-z]+)*\s+is\s+just\s+another\b',  # "X is just another"
-            r'^\s*[A-Za-z]+(?:\s+[A-Za-z]+)*\s+means\b',          # "X means"
-            r'^\s*[Tt]hat\s+is\b',                                 # "That is"
-            r'^\s*[Tt]his\s+means\b',                              # "This means"
-            r'^\s*[Ii]n\s+other\s+words\b',                        # "In other words"
-            r'^\s*[Ww]hich\s+means\b',                             # "Which means"
-        ]
         
         for pattern in COMMENTARY_PATTERNS:
             if re.search(pattern, chunk):
@@ -2842,42 +3441,75 @@ def detect_commentary_blocks(text: str, start_pos: int, end_pos: int, verse_text
                 break
         
         if not is_commentary:
-            # Check if words in this chunk appear in the verse
-            chunk_words = get_words(chunk[:100])  # Check first 100 chars
+            # Sequential alignment check (order-aware, fixes Bugs 2 & 3)
+            chunk_words = get_words(chunk[:150])
             if len(chunk_words) >= 5:
-                matching = sum(1 for w in chunk_words if w in verse_words_set)
-                match_ratio = matching / len(chunk_words)
+                alignment_ratio, aligned_indices, gap_regions = compute_sequential_alignment(
+                    chunk_words, verse_words_list
+                )
                 
-                # If less than 40% of words are verse words, likely commentary
-                if match_ratio < 0.4:
+                # Primary check: low sequential alignment → commentary
+                if alignment_ratio < 0.35:
                     is_commentary = True
+                elif alignment_ratio < 0.55:
+                    # Borderline: check if words match in set but NOT in sequence
+                    # (paraphrase detection — same words, different order)
+                    set_matching = sum(1 for w in chunk_words if w in verse_words_set)
+                    set_ratio = set_matching / len(chunk_words)
+                    
+                    # High set overlap but low sequential alignment = paraphrase
+                    if set_ratio > 0.4 and alignment_ratio < 0.45:
+                        is_commentary = True
+                
+                # Guard: If flagged as commentary but the chunk STARTS with
+                # verse-aligned words, it means the verse resumes after a
+                # sentence break (e.g., after an interjection like "who?").
+                # Cancel the commentary flag — the actual commentary will be
+                # caught at the next sentence boundary within this chunk.
+                if is_commentary and aligned_indices:
+                    aligned_set = set(aligned_indices)
+                    leading_aligned = 0
+                    for idx in range(min(5, len(chunk_words))):
+                        if idx in aligned_set:
+                            leading_aligned += 1
+                        else:
+                            break
+                    
+                    # Require 3+ consecutive leading words aligned AND at least
+                    # one content word (length >= 4) to avoid false positives
+                    # from common function words like "and to the".
+                    if leading_aligned >= 3:
+                        has_content_word = any(
+                            len(chunk_words[idx]) >= 4
+                            for idx in range(leading_aligned)
+                        )
+                        if has_content_word:
+                            is_commentary = False
         
         if is_commentary:
             # Find where this commentary block ends
-            # Look for the next verse phrase match or end of quote
             commentary_start = start_pos + boundary_pos
             
-            # Find where verse text resumes (look for verse phrases)
+            # Word-level verse resumption detection (fixes Bug 1)
+            # Use min_run_length=5 to avoid false positives where commentary
+            # paraphrases reuse short sequences of verse words
             remaining_text = quote_text[boundary_pos:]
-            
-            # Try to find where verse content resumes by looking for verse phrases
-            verse_phrases = find_distinctive_phrases(verse_text)
             commentary_end = end_pos  # Default to end of quote
             
-            for phrase in verse_phrases:
-                phrase_text = ' '.join(phrase)
-                # Search for this phrase in remaining text
-                for match in re.finditer(re.escape(phrase_text[:20]), remaining_text, re.IGNORECASE):
-                    potential_end = start_pos + boundary_pos + match.start()
-                    if potential_end > commentary_start + 20:  # Minimum commentary length
-                        commentary_end = potential_end
-                        break
-                if commentary_end < end_pos:
-                    break
+            resumption_pos = find_verse_resumption_point(
+                remaining_text,
+                verse_words_list,
+                offset=start_pos + boundary_pos,
+                min_run_length=5
+            )
+            
+            if resumption_pos is not None and resumption_pos > commentary_start + 50:
+                commentary_end = resumption_pos
             
             # Validate commentary block isn't too short
             if commentary_end - commentary_start > 30:
                 commentary_blocks.append((commentary_start, commentary_end))
+                skip_until = commentary_end  # Skip boundaries inside this block
     
     # Merge overlapping blocks
     if not commentary_blocks:
@@ -2933,6 +3565,61 @@ def detect_interjections(text: str, start_pos: int, end_pos: int) -> List[Tuple[
             merged.append((start, end))
     
     return merged
+
+
+def trim_trailing_exclusions(
+    text: str,
+    start: int,
+    end: int,
+    all_exclusions: List[Tuple[int, int]],
+    min_trailing_len: int = 25,
+    proximity: int = 10,
+    verbose: bool = False
+) -> Tuple[int, List[Tuple[int, int]]]:
+    """
+    Trim trailing commentary/exclusion from a passage boundary.
+
+    If the last exclusion extends to (or near) end_pos, it means the passage
+    boundary was set too far — the exclusion IS the non-verse tail. Trim
+    end_pos to the start of the trailing exclusion so the non-verse text
+    becomes part of the next paragraph instead of an interjection node.
+
+    Short trailing exclusions (< min_trailing_len chars) are kept as interjections
+    since they may be legitimate end-of-verse interjections like "amen?".
+
+    Args:
+        text: Full transcript text
+        start: Passage start position (absolute)
+        end: Passage end position (absolute, will be adjusted)
+        all_exclusions: List of (start, end) exclusion positions
+        min_trailing_len: Minimum length for trailing exclusion to trigger trim
+        proximity: How close to end_pos the exclusion must extend to be considered trailing
+        verbose: Enable debug logging
+
+    Returns:
+        Tuple of (new_end, filtered_exclusions)
+    """
+    if not all_exclusions:
+        return end, all_exclusions
+
+    last_start, last_end = all_exclusions[-1]
+    trailing_len = last_end - last_start
+
+    # Only trim if the exclusion reaches close to the passage end and is long enough
+    # to be commentary (not a short interjection like "amen?")
+    if last_end >= end - proximity and trailing_len >= min_trailing_len:
+        new_end = last_start
+        # Trim trailing whitespace from the new end position
+        while new_end > start and text[new_end - 1] in ' \t\n':
+            new_end -= 1
+
+        if new_end > start:
+            if verbose:
+                trimmed_text = text[new_end:end][:50].replace('\n', ' ')
+                print(f"      ✂ Trimmed trailing commentary ({trailing_len} chars): '{trimmed_text}...'")
+            return new_end, all_exclusions[:-1]
+
+    return end, all_exclusions
 
 
 # ============================================================================
@@ -3087,15 +3774,23 @@ def process_transcript(input_file: str, output_file: Optional[str] = None, trans
 
 
 def process_text(text: str, translation: Optional[str] = None, verbose: bool = True, 
-                 auto_detect: bool = True, progress_callback: Optional[callable] = None) -> Tuple[str, List[QuoteBoundary]]:
+                 auto_detect: bool = True, progress_callback: Optional[Callable[[int, str], None]] = None) -> Tuple[str, List[QuoteBoundary]]:
     """
     Process raw transcript text directly (for integration with main.py pipeline).
     
-    This function processes text without file I/O, making it suitable for
-    integration into a larger processing pipeline.
+    COORDINATE CONTRACT:
+    All QuoteBoundary.start_pos/end_pos values MUST reference positions in the
+    unmodified input text. No text mutation is permitted during boundary detection.
+    Reference normalization (e.g., "Romans 12 one" → "Romans 12:1") is NOT applied
+    to the source text — it is available via reference.to_standard_format() for
+    display purposes and stored as metadata on AST PassageNode nodes.
+    
+    This contract ensures that downstream consumers (ast_builder, paragraph
+    segmentation, tag extraction) can safely use quote boundary positions to
+    slice the original text without coordinate-space mismatches.
     
     Args:
-        text: Raw transcript text
+        text: Raw transcript text (NEVER modified by this function)
         translation: Bible translation to use. If None and auto_detect=True, 
                     translation will be auto-detected PER QUOTE (allowing for
                     speakers who switch translations mid-sermon).
@@ -3106,10 +3801,14 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
         progress_callback: Optional callback function(percent: int, message: str) for progress updates
     
     Returns:
-        Tuple of (processed_text, list_of_quote_boundaries)
+        Tuple of (original_text, list_of_quote_boundaries)
+        The returned text is IDENTICAL to the input text (no mutation).
         The quote boundaries can be used by downstream processors (like paragraph
         segmentation) to ensure quotes are not split across paragraphs.
     """
+    # Save original text for immutability assertion at the end
+    _original_input_text = text
+    
     def report_progress(percent: int, message: str):
         """Helper to report progress via callback."""
         if progress_callback:
@@ -3146,48 +3845,30 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
         for ref in references:
             print(f"      • {ref.original_text} → {ref.to_standard_format()}")
     
-    # Phase 2: Normalize references in text
-    # IMPORTANT: Store original_text lengths BEFORE normalization because the
-    # text will change (e.g., "Romans 12 one" → "Romans 12:1") but we need the
-    # original lengths for accurate quote boundary detection.
+    # Phase 2: SKIPPED — Reference normalization removed from this pipeline stage.
     # 
-    # Map: position → (original_text, original_length)
-    # We use a list of tuples sorted by position to handle potential edge cases
-    original_text_info = []
-    for ref in references:
-        original_text_info.append({
-            'position': ref.position,
-            'original_text': ref.original_text,
-            'original_length': len(ref.original_text),
-            'book': ref.book,
-            'chapter': ref.chapter,
-            'verse_start': ref.verse_start,
-            'verse_end': ref.verse_end
-        })
-    
-    report_progress(15, "Normalizing reference formats...")
+    # COORDINATE CONTRACT: All QuoteBoundary.start_pos/end_pos values MUST
+    # reference positions in the unmodified input text. No text mutation is
+    # permitted during boundary detection. Reference normalization (e.g.,
+    # "Romans 12 one" → "Romans 12:1") is stored as metadata on the AST
+    # PassageNode.quoteDetection for renderer display, NOT applied to the
+    # source text. This eliminates the entire class of coordinate-space
+    # mismatch bugs where mutated-text positions are used to slice original text.
+    #
+    # The normalized reference is available via reference.to_standard_format()
+    # for display purposes.
+    #
+    # NOTE: AST-level reference normalization now happens in Stage 2b of the
+    # AST pipeline (normalize_ast_references in ast_builder.py). It operates
+    # on TextNode.content strings AFTER passages are applied to the AST,
+    # so it never affects coordinate-space consistency.
+    report_progress(15, "Reference formats ready (no text mutation)...")
     if verbose:
-        print("\n✏️  Phase 2: Normalizing reference formats...")
-    text = normalize_references_in_text(text, references)
-    
-    # Re-detect references after normalization (positions may have changed)
-    references = detect_bible_references(text, api_client, text)
-    
-    # Restore original_text information from pre-normalization
-    # Match by book/chapter/verse since positions may have shifted
-    for ref in references:
-        for orig_info in original_text_info:
-            if (ref.book == orig_info['book'] and 
-                ref.chapter == orig_info['chapter'] and
-                ref.verse_start == orig_info['verse_start'] and
-                ref.verse_end == orig_info['verse_end']):
-                # Store the original text info for later use
-                # We can't modify original_text (it should reflect normalized text for
-                # accurate position-based operations), but we store the original length
-                # in a new field for boundary detection
-                ref._pre_normalization_length = orig_info['original_length']
-                ref._pre_normalization_text = orig_info['original_text']
-                break
+        print("\n✏️  Phase 2: SKIPPED (no text mutation — references kept in original form)")
+        print("   Normalized forms available via reference.to_standard_format():")
+        for ref in references:
+            if ref.original_text != ref.to_standard_format():
+                print(f"      • '{ref.original_text}' → display as '{ref.to_standard_format()}'")
     
     # Phase 3: Fetch Bible verse texts and detect translation PER QUOTE
     # This handles speakers who switch translations mid-sermon
@@ -3427,6 +4108,13 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
                                 merged_exclusions.append((excl_start, excl_end))
                         all_exclusions = merged_exclusions
                     
+                    # Trim trailing commentary from passage boundary
+                    # If the last exclusion extends to end, it's non-verse tail text
+                    # that should be in the next paragraph, not an interjection
+                    end, all_exclusions = trim_trailing_exclusions(
+                        text, start, end, all_exclusions, verbose=verbose
+                    )
+                    
                     if all_exclusions and verbose:
                         num_inter = len([e for e in all_exclusions if e[1] - e[0] < 30])
                         num_comm = len([e for e in all_exclusions if e[1] - e[0] >= 30])
@@ -3518,6 +4206,11 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
                                     merged_exclusions.append((excl_start, excl_end))
                             all_exclusions = merged_exclusions
                         
+                        # Trim trailing commentary from passage boundary
+                        end, all_exclusions = trim_trailing_exclusions(
+                            text, start, end, all_exclusions, verbose=verbose
+                        )
+                        
                         quote = QuoteBoundary(
                             start_pos=start,
                             end_pos=end,
@@ -3576,6 +4269,15 @@ def process_text(text: str, translation: Optional[str] = None, verbose: bool = T
         print(f"   • Output length: {len(text)} characters")
         print("=" * 60)
     
+    # IMMUTABILITY ASSERTION: Verify text was never mutated during processing.
+    # This prevents future regressions where someone adds text mutation back
+    # into the pipeline, which would break coordinate-space consistency.
+    assert text is _original_input_text, (
+        "INVARIANT VIOLATION: process_text() mutated the input text! "
+        f"Original length={len(_original_input_text)}, current length={len(text)}. "
+        "All QuoteBoundary positions reference the original text — mutation is forbidden."
+    )
+    
     return text, quotes
 
 
@@ -3605,11 +4307,11 @@ def process_text_to_ast(
     translation: Optional[str] = None,
     verbose: bool = True,
     auto_detect: bool = True,
-    progress_callback: Optional[callable] = None,
+    progress_callback: Optional[Callable[[int, str], None]] = None,
     title: Optional[str] = None,
     bible_passage: Optional[str] = None,
     tags: Optional[List[str]] = None,
-) -> 'ASTBuilderResult':
+) -> "ASTBuilderResult":
     """
     Process text and build structured AST document model.
     
@@ -3634,7 +4336,8 @@ def process_text_to_ast(
     # Import AST builder (lazy import to avoid circular dependency)
     from ast_builder import build_ast, ASTBuilderResult
     
-    # Step 1: Process text using existing pipeline (returns text + quotes)
+    # Step 1: Process text using existing pipeline (returns original text + quotes)
+    # process_text() guarantees text is unmodified (immutability assertion)
     processed_text, quote_boundaries = process_text(
         text=text,
         translation=translation,
@@ -3643,21 +4346,27 @@ def process_text_to_ast(
         progress_callback=progress_callback
     )
     
-    # Step 2: Build AST from processed text and quotes
+    # Create API client for reference normalization verification (Stage 2b)
+    initial_translation = translation if translation else DEFAULT_TRANSLATION
+    ast_api_client = BibleAPIClient(translation=initial_translation)
+    
+    # Step 2: Build AST (AST-first pipeline — no separate sentence/paragraph step)
     if verbose:
         print("\n🏗️  Building document AST...")
     
     result = build_ast(
-        paragraphed_text=processed_text,
+        raw_text=processed_text,
         quote_boundaries=quote_boundaries,
         title=title,
         bible_passage=bible_passage,
-        tags=tags or []
+        tags=tags or [],
+        api_client=ast_api_client,
     )
     
     if verbose:
         print(f"   ✓ Built AST with {result.processing_metadata.paragraph_count} paragraphs, "
-              f"{result.processing_metadata.quote_count} quotes")
+              f"{result.processing_metadata.passage_count} passages, "
+              f"{result.processing_metadata.normalization_count} normalizations")
     
     return result
 
@@ -3667,7 +4376,7 @@ def process_text_to_ast_json(
     translation: Optional[str] = None,
     verbose: bool = True,
     auto_detect: bool = True,
-    progress_callback: Optional[callable] = None,
+    progress_callback: Optional[Callable[[int, str], None]] = None,
     title: Optional[str] = None,
     bible_passage: Optional[str] = None,
     tags: Optional[List[str]] = None,

@@ -17,7 +17,8 @@ import time
 # Ensure the python source directory is on the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from main import tokenize_sentences, segment_into_paragraph_groups, extract_tags  # type: ignore[attr-defined]
+from ast_builder import tokenize_sentences
+from main import segment_into_paragraph_groups, extract_tags  # type: ignore[attr-defined]
 
 
 def calibrate_paragraph_thresholds(text: str) -> list[dict]:

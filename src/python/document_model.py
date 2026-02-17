@@ -631,6 +631,7 @@ class ProcessingMetadata:
     passage_count: int = 0
     paragraph_count: int = 0
     interjection_count: int = 0
+    normalization_count: int = 0
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -639,6 +640,7 @@ class ProcessingMetadata:
             'passageCount': self.passage_count,
             'paragraphCount': self.paragraph_count,
             'interjectionCount': self.interjection_count,
+            'normalizationCount': self.normalization_count,
         }
 
 

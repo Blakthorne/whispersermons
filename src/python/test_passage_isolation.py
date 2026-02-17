@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for Passage Structure Isolation (Integrated Pipeline).
+Test script for Passage Structure Isolation (AST-First Pipeline).
 
 Tests:
 1. Romans 12:1 example - the primary use case from the plan
@@ -12,7 +12,7 @@ Tests:
 7. Full pipeline test
 8. TipTap integration compatibility
 
-Uses the new integrated pipeline: raw_text + sentences + paragraph_groups + boundaries
+Uses the AST-first pipeline: raw_text + quote_boundaries → build_ast()
 """
 
 import sys
@@ -27,7 +27,6 @@ from bible_quote_processor import (
     verify_quote_boundaries, get_words
 )
 from ast_builder import build_ast, ASTBuilderConfig
-from main import tokenize_sentences, segment_into_paragraph_groups, SentenceInfo
 
 
 # ============================================================================
@@ -46,15 +45,6 @@ ROMANS_8_28_VERSE = "And we know that all things work together for good to them 
 def create_mock_quote_boundary(start, end, book, chapter, verse_start, verse_end=None, verse_text="", confidence=0.95):
     ref = BibleReference(book=book, chapter=chapter, verse_start=verse_start, verse_end=verse_end, original_text=f"{book} {chapter}:{verse_start}")
     return QuoteBoundary(start_pos=start, end_pos=end, reference=ref, verse_text=verse_text, confidence=confidence, translation="KJV")
-
-
-def prepare_ast_inputs(raw_text, quote_boundaries=None, min_sentences=2):
-    sentences = tokenize_sentences(raw_text)
-    paragraph_groups = segment_into_paragraph_groups(
-        sentences, quote_boundaries=quote_boundaries or [],
-        min_sentences_per_paragraph=min_sentences, similarity_threshold=0.45
-    )
-    return sentences, paragraph_groups
 
 
 def get_passage_content(passage_node):
@@ -152,11 +142,8 @@ def test_passage_structural_isolation():
         verse_text=ROMANS_12_1_VERSE_TEXT, confidence=0.9
     )
 
-    sentences, paragraph_groups = prepare_ast_inputs(raw_text, [quote])
-
     result = build_ast(
-        raw_text=raw_text, sentences=sentences,
-        paragraph_groups=paragraph_groups,
+        raw_text=raw_text,
         quote_boundaries=[quote], title="Isolation Test", debug=True
     )
 
@@ -268,11 +255,8 @@ def test_multiple_passages_isolated():
         create_mock_quote_boundary(start=romans_start, end=romans_end, book="Romans", chapter=8, verse_start=28, verse_text=ROMANS_8_28_VERSE, confidence=0.92)
     ]
 
-    sentences, paragraph_groups = prepare_ast_inputs(raw_text, quotes)
-
     result = build_ast(
-        raw_text=raw_text, sentences=sentences,
-        paragraph_groups=paragraph_groups,
+        raw_text=raw_text,
         quote_boundaries=quotes, title="Multi-Passage Test", debug=True
     )
 
@@ -314,11 +298,8 @@ def test_passages_with_interjections():
         verse_text=JOHN_3_16_VERSE, confidence=0.9
     )
 
-    sentences, paragraph_groups = prepare_ast_inputs(raw_text, [quote])
-
     result = build_ast(
-        raw_text=raw_text, sentences=sentences,
-        paragraph_groups=paragraph_groups,
+        raw_text=raw_text,
         quote_boundaries=[quote], title="Interjection Test", debug=True
     )
 
@@ -373,11 +354,8 @@ def test_full_pipeline():
 
         print(f"Quotes detected: {len(quote_boundaries)}")
 
-        sentences, paragraph_groups = prepare_ast_inputs(raw_text, quote_boundaries)
-
         result = build_ast(
-            raw_text=raw_text, sentences=sentences,
-            paragraph_groups=paragraph_groups,
+            raw_text=raw_text,
             quote_boundaries=quote_boundaries,
             title="Full Pipeline Test", debug=True
         )
@@ -436,11 +414,8 @@ def test_tiptap_integration():
         verse_text=ROMANS_12_1_VERSE_TEXT, confidence=0.95
     )
 
-    sentences, paragraph_groups = prepare_ast_inputs(raw_text, [quote])
-
     result = build_ast(
-        raw_text=raw_text, sentences=sentences,
-        paragraph_groups=paragraph_groups,
+        raw_text=raw_text,
         quote_boundaries=[quote], title="TipTap Test", debug=True
     )
 

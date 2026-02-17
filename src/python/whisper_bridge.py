@@ -457,9 +457,10 @@ def process_bible_quotes(
     # Extract unique references and merge overlapping ones
     scripture_refs = merge_overlapping_references(quote_boundaries)
     
-    # We return the original text here because we want subsequent stages (paragraphing, AST)
-    # to work with the original offsets from quote_boundaries. 
-    # The decorative quotation marks will be added by the renderer.
+    # process_text() returns the ORIGINAL text unmodified (guaranteed by immutability
+    # assertion). All QuoteBoundary positions reference this original text.
+    # Decorative quotation marks and reference normalization are handled by the
+    # AST renderer using metadata, not text mutation.
     return text, quote_boundaries, scripture_refs
 
 
@@ -559,7 +560,8 @@ def segment_paragraphs(
     """
     emit_progress(4, "Segmenting paragraphs", 0, "Loading semantic model...")
     
-    from main import tokenize_sentences, segment_into_paragraph_groups
+    from ast_builder import tokenize_sentences
+    from main import segment_into_paragraph_groups
     
     emit_progress(4, "Segmenting paragraphs", 20, "Tokenizing sentences...")
     sentences = tokenize_sentences(text)
@@ -705,24 +707,18 @@ def process_sermon(
     )
     result['references'] = scripture_refs
     
-    # Stage 4: Segment paragraphs using integrated pipeline
-    # Returns sentence tokens and paragraph groups (sentence index lists).
-    # Paragraph structure is represented ONLY in the AST - the source text
-    # is never modified. All positions reference raw_text directly.
-    sentences, paragraph_groups = segment_paragraphs(
-        raw_text,
-        quote_boundaries=quote_boundaries
-    )
     # Body field contains the raw transcript. Paragraph structure comes
     # exclusively from the AST (documentState). This ensures the text
     # is never modified during pipeline processing.
     result['body'] = raw_text
     
     # Stage 5: Extract tags from raw text (not modified text)
+    # (Stage 4 paragraph segmentation now happens inside build_ast)
     tags = extract_tags(raw_text, quote_boundaries)
     result['tags'] = tags
     
-    # Stage 6: Build structured AST (new integrated document model)
+    # Stage 6: Build structured AST (AST-first pipeline)
+    # This internally: creates flat AST → applies passages → segments paragraphs
     if use_ast:
         emit_progress(6, "Building document model", 0, "Creating structured document...")
         try:
@@ -731,12 +727,10 @@ def process_sermon(
             if debug_ast:
                 print("[DEBUG AST] Starting AST building with debug mode enabled", file=sys.stderr)
             
-            # New integrated pipeline: pass raw_text, sentences, groups, boundaries
-            # All positions reference raw_text directly - no remapping needed
+            # AST-first pipeline: only needs raw_text and quote_boundaries
+            # Sentence tokenization and paragraph segmentation happen inside build_ast
             ast_result = build_ast(
                 raw_text=raw_text,
-                sentences=sentences,
-                paragraph_groups=paragraph_groups,
                 quote_boundaries=quote_boundaries,
                 title=result['title'],
                 bible_passage=result['biblePassage'],

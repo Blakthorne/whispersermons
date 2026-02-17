@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""
-End-to-end test for the integrated pipeline.
+"""End-to-end test for the AST-first pipeline.
 
 Tests that the new pipeline correctly:
-1. Tokenizes raw text into sentences with character positions
-2. Groups sentences into paragraph groups
-3. Maps passage boundaries to paragraph groups (no remapping needed)
-4. Builds the AST with correct passage content
+1. Takes raw text and quote boundaries
+2. Builds the AST with passage isolation and paragraph segmentation
+3. Produces correct passage content in the AST
 
 All positions reference the immutable raw_text. No remapping needed.
 """
@@ -17,7 +15,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from main import tokenize_sentences, segment_into_paragraph_groups, SentenceInfo
 from bible_quote_processor import QuoteBoundary, BibleReference
 from ast_builder import build_ast
 
@@ -45,9 +42,9 @@ def create_quote(raw_text, verse_pattern, book, chapter, verse_start, verse_text
 
 
 def test_integrated_pipeline():
-    """Test the full integrated pipeline with no text mutation."""
+    """Test the full AST-first pipeline with no text mutation."""
     print("=" * 70)
-    print("END-TO-END INTEGRATED PIPELINE TEST")
+    print("END-TO-END AST-FIRST PIPELINE TEST")
     print("=" * 70)
     print()
 
@@ -62,15 +59,7 @@ def test_integrated_pipeline():
 
     print(f"Step 1: Raw text length = {len(raw_text)} chars")
 
-    # Step 2: Tokenize into sentences
-    sentences = tokenize_sentences(raw_text)
-    print(f"Step 2: Tokenized into {len(sentences)} sentences")
-    for s in sentences:
-        preview = s.text[:50] + '...' if len(s.text) > 50 else s.text
-        print(f"  [{s.start_pos}-{s.end_pos}] '{preview}'")
-    print()
-
-    # Step 3: Create quote boundary (positions in raw_text)
+    # Step 2: Create quote boundary (positions in raw_text)
     verse_pattern = r'I beseech you therefore brethren.*?reasonable service\.'
     quote = create_quote(
         raw_text, verse_pattern,
@@ -79,36 +68,19 @@ def test_integrated_pipeline():
         confidence=0.97
     )
 
-    print(f"Step 3: Quote boundary = [{quote.start_pos}, {quote.end_pos}]")
+    print(f"Step 2: Quote boundary = [{quote.start_pos}, {quote.end_pos}]")
     print(f"  Content: '{raw_text[quote.start_pos:quote.end_pos][:60]}...'")
     print()
 
-    # Step 4: Segment into paragraph groups
-    paragraph_groups = segment_into_paragraph_groups(
-        sentences,
-        quote_boundaries=[quote],
-        min_sentences_per_paragraph=2,
-        similarity_threshold=0.45
-    )
-
-    print(f"Step 4: {len(paragraph_groups)} paragraph groups")
-    for i, group in enumerate(paragraph_groups):
-        group_text = ' '.join(sentences[idx].text for idx in group)
-        preview = group_text[:60] + '...' if len(group_text) > 60 else group_text
-        print(f"  Group {i}: sentences {group} -> '{preview}'")
-    print()
-
-    # Step 5: Build AST (no remapping needed!)
+    # Step 3: Build AST (AST-first: flat AST → apply passages → segment paragraphs)
     result = build_ast(
         raw_text=raw_text,
-        sentences=sentences,
-        paragraph_groups=paragraph_groups,
         quote_boundaries=[quote],
         title="E2E Test Sermon",
         debug=True
     )
 
-    print(f"Step 5: AST built - {result.processing_metadata.paragraph_count} paragraphs, "
+    print(f"Step 3: AST built - {result.processing_metadata.paragraph_count} paragraphs, "
           f"{result.processing_metadata.passage_count} passages")
 
     print()
