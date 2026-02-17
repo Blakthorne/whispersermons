@@ -103,3 +103,5 @@ tsup.config.js
 tsup.config.d.ts
 vitest.config.js
 vitest.config.d.ts
+
+bible_verse_cache.json

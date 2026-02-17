@@ -16,7 +16,9 @@
 
 /* Boundary handles - container acts as invisible hitbox */
 .boundary-handle {
-  position: absolute;
+  position: fixed; /* Fixed positioning for transform-based placement */
+  top: 0;
+  left: 0;
   width: 24px; /* Generous hit area for easy grabbing */
   cursor: col-resize;
   pointer-events: auto;
@@ -24,6 +26,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  will-change: transform; /* GPU acceleration for smooth scrolling */
   /* Use pointer-events to only grab handle, but here we want the whole box */
 }
 
@@ -79,19 +82,25 @@
 /* Highlight overlay - text selection style instead of border */
 .boundary-highlight {
   position: fixed; /* Fixed position for portal rendering */
+  top: 0;
+  left: 0;
   border-radius: 3px;
   background: rgba(59, 130, 246, 0.25); /* Blue highlight matching handles */
   pointer-events: none;
+  will-change: transform; /* GPU acceleration for smooth scrolling */
   /* Remove the border and animation - just use solid highlight */
 }
 
 /* Text-flow highlight - one rectangle per line */
 .boundary-highlight-line {
   position: fixed;
+  top: 0;
+  left: 0;
   border-radius: 2px;
   background: rgba(59, 130, 246, 0.25);
   pointer-events: none;
-  transition: background 0.15s ease;
+  will-change: transform; /* GPU acceleration for smooth scrolling */
+  /* No transition - causes lag during scroll */
 }
 
 /* First and last line highlights have rounded corners on their respective ends */
